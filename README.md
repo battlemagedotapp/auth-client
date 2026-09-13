@@ -77,7 +77,7 @@ The adapter replaces query keys/options, auth cache invalidation metadata, and s
 
 ## Installation
 
-After the first release is published, install its exact precompiled version:
+Install the first precompiled release:
 
 ```sh
 pnpm add '@strawdev/auth-client@github:battlemagedotapp/auth-client#v0.1.0'
@@ -87,7 +87,7 @@ Release tags contain the ready-to-use package at the repository root: JavaScript
 
 Keep the dependency manifest and lockfile in each application. Upgrade deliberately to another release tag; development commits do not change an installed release. Private repositories require Git access on developer machines and CI. No npm account or package registry configuration is needed.
 
-The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates a version tag and GitHub Release. Tags point to compiled snapshots; do not tag source commits manually. The package version determines the tag. Never move or reuse a released tag. The repository is public at [battlemagedotapp/auth-client](https://github.com/battlemagedotapp/auth-client). No release has been published yet; installation through an actual GitHub release tag remains unverified.
+The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates a version tag and GitHub Release. Tags point to compiled snapshots; do not tag source commits manually. The package version determines the tag. Never move or reuse a released tag. The repository is public at [battlemagedotapp/auth-client](https://github.com/battlemagedotapp/auth-client). [v0.1.0](https://github.com/battlemagedotapp/auth-client/releases/tag/v0.1.0) is published and its GitHub installation has been verified in an isolated consumer.
 
 ## Development
 
