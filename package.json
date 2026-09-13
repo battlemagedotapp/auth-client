@@ -1,0 +1,48 @@
+{
+  "name": "better-auth-convex-client-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt --write .",
+    "check": "pnpm build && tsc --noEmit && pnpm --filter @example/backend check && pnpm --filter @example/expo check && oxlint . && oxfmt --check .",
+    "test": "vitest run",
+    "build": "tsc -p packages/better-auth-convex-client/tsconfig.build.json",
+    "verify": "pnpm check && pnpm test",
+    "verify:full": "pnpm verify && pnpm test:package && pnpm test:git && pnpm test:e2e",
+    "diagnose": "node tools/diagnose.mjs",
+    "dev": "pnpm build && turbo run dev",
+    "test:integration": "vitest run tests/backend.test.ts",
+    "test:e2e": "playwright test",
+    "mailbox": "node tools/mailbox.mjs",
+    "test:package": "node tools/package-check.mjs",
+    "prepare": "node tools/prepare.mjs",
+    "test:git": "node tools/git-package-check.mjs",
+    "release:prepare": "node tools/release-package.mjs"
+  },
+  "devDependencies": {
+    "@convex-dev/better-auth": "0.12.5",
+    "@playwright/test": "1.62.1",
+    "@tanstack/react-query": "5.102.8",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.4",
+    "better-auth": "1.6.22",
+    "convex": "1.45.0",
+    "convex-test": "0.0.51",
+    "esbuild": "0.28.1",
+    "husky": "9.1.7",
+    "jsdom": "27.4.0",
+    "oxfmt": "0.65.0",
+    "oxlint": "1.80.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "turbo": "2.10.12",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@12.0.0"
+}

@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Auth Data Example",
+    "slug": "reactive-auth-example",
+    "scheme": "reactive-auth-example",
+    "android": {
+      "package": "dev.straw.reactiveauthexample"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-router", "expo-secure-store"]
+  }
+}

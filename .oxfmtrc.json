@@ -1,0 +1,11 @@
+{
+  "ignorePatterns": [
+    "pnpm-lock.yaml",
+    "**/dist/**",
+    "**/generatedSchema.ts",
+    "**/_generated/**",
+    "**/android/**",
+    "**/ios/**",
+    "test-results/**"
+  ]
+}

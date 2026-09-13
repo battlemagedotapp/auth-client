@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - examples/*
+allowBuilds:
+  esbuild: true
+
+overrides:
+  react-native-reanimated: 4.5.1

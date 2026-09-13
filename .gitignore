@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.cache/
+.env*
+!.env.example
+test-results/
+playwright-report/
+.expo/
+examples/expo/android/
+examples/expo/ios/
+
+artifacts/

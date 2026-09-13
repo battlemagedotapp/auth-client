@@ -1,0 +1,49 @@
+{
+  "name": "@strawdev/auth-client",
+  "version": "0.1.0",
+  "description": "Typed React caching and authorized Convex invalidation for an application-owned Better Auth client",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./convex": {
+      "types": "./dist/convex/index.d.ts",
+      "import": "./dist/convex/index.js"
+    },
+    "./convex/component": {
+      "types": "./dist/convex/component.d.ts",
+      "import": "./dist/convex/component.js"
+    }
+  },
+  "scripts": {
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit -p tsconfig.build.json"
+  },
+  "peerDependencies": {
+    "@convex-dev/better-auth": "~0.12.5",
+    "@tanstack/react-query": "~5.102.8",
+    "better-auth": "~1.6.22",
+    "convex": "~1.45.0",
+    "react": "~19.2.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "@tanstack/react-query": {
+      "optional": true
+    }
+  }
+}

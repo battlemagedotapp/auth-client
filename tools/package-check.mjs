@@ -1,0 +1,173 @@
+import { mkdtemp, writeFile, readdir, readFile, rm, access } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
+import { build } from "esbuild";
+import { prepareRelease } from "./release-package.mjs";
+const root = resolve(".");
+const directory = await mkdtemp(join(tmpdir(), "reactive-auth-package-"));
+if (!process.env.AUTH_CLIENT_GIT_SOURCE) {
+  const release = await prepareRelease();
+  execFileSync("pnpm", ["--dir", release.directory, "pack", "--pack-destination", directory], {
+    cwd: root,
+    stdio: "pipe",
+  });
+}
+const tarball = (await readdir(directory)).find((file) => file.endsWith(".tgz"));
+await writeFile(
+  join(directory, "package.json"),
+  JSON.stringify({
+    private: true,
+    type: "module",
+    packageManager: "pnpm@12.0.0",
+    dependencies: {
+      "@strawdev/auth-client":
+        process.env.AUTH_CLIENT_GIT_SOURCE ?? `file:${join(directory, tarball)}`,
+      "better-auth": "1.6.22",
+      "@convex-dev/better-auth": "0.12.5",
+      convex: "1.45.0",
+      "@tanstack/react-query": "5.102.8",
+      react: "19.2.3",
+      "@types/react": "19.2.4",
+    },
+  }),
+);
+await writeFile(
+  join(directory, "pnpm-workspace.yaml"),
+  JSON.stringify({
+    allowBuilds: {
+      esbuild: true,
+    },
+  }),
+);
+execFileSync("pnpm", ["--dir", directory, "install"], { cwd: root, stdio: "inherit" });
+if (process.env.AUTH_CLIENT_GIT_SOURCE) {
+  await rm(join(directory, "node_modules"), { recursive: true, force: true });
+  execFileSync("pnpm", ["--dir", directory, "install", "--frozen-lockfile"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+}
+{
+  const releaseManifest = JSON.parse(
+    await readFile(join(directory, "node_modules/@strawdev/auth-client/package.json"), "utf8"),
+  );
+  if (releaseManifest.scripts || releaseManifest.devDependencies || releaseManifest.packageManager)
+    throw new Error("Release contains install/build machinery");
+}
+if (process.env.AUTH_CLIENT_EXPECTED_VERSION) {
+  const installed = JSON.parse(
+    await readFile(join(directory, "node_modules/@strawdev/auth-client/package.json"), "utf8"),
+  );
+  if (installed.version !== process.env.AUTH_CLIENT_EXPECTED_VERSION)
+    throw new Error("Git installation did not use the release tag's version");
+}
+const installedRoot = join(directory, "node_modules/@strawdev/auth-client");
+for (const entry of ["index", "convex/index", "convex/component"]) {
+  for (const suffix of [".js.map", ".d.ts.map"]) {
+    const mapPath = join(installedRoot, "dist", entry + suffix);
+    const map = JSON.parse(await readFile(mapPath, "utf8"));
+    for (const source of map.sources) {
+      const target = resolve(dirname(mapPath), source);
+      if (!target.startsWith(join(installedRoot, "src") + "/"))
+        throw new Error("Source map escapes the installed package");
+      await access(target);
+    }
+  }
+}
+await writeFile(
+  join(directory, "consumer.ts"),
+  `import {createAuthClient} from 'better-auth/react';
+import {createAuthDataClient,type InvalidationApi} from '@strawdev/auth-client';
+import {authSignalTables} from '@strawdev/auth-client/convex';
+import {lookup} from '@strawdev/auth-client/convex/component';
+const client=createAuthDataClient({authClient:createAuthClient(),api:{} as InvalidationApi,features:{sessions:true}});
+void [client,authSignalTables,lookup];`,
+);
+const fixtures = ["inference.ts", "types.ts", "backend-types.ts", "migration-types.ts"];
+for (const fixture of fixtures) {
+  const source = await readFile(join(root, "tests", fixture), "utf8");
+  const packed = source
+    .replaceAll("../packages/better-auth-convex-client/src/index.js", "@strawdev/auth-client")
+    .replaceAll("../packages/better-auth-convex-client/src/types.js", "@strawdev/auth-client")
+    .replaceAll(
+      "../packages/better-auth-convex-client/src/convex/index.js",
+      "@strawdev/auth-client/convex",
+    )
+    .replaceAll(
+      "../packages/better-auth-convex-client/src/convex/component.js",
+      "@strawdev/auth-client/convex/component",
+    );
+  await writeFile(join(directory, fixture), packed);
+}
+execFileSync(
+  process.execPath,
+  [
+    join(root, "node_modules/typescript/bin/tsc"),
+    "--noEmit",
+    "--strict",
+    "--skipLibCheck",
+    "--target",
+    "ES2022",
+    "--module",
+    "NodeNext",
+    "consumer.ts",
+    ...fixtures,
+  ],
+  { cwd: directory, stdio: "inherit" },
+);
+const baseline = `export {createAuthClient} from 'better-auth/react';export {organizationClient} from 'better-auth/client/plugins';export {ConvexReactClient} from 'convex/react';export {ConvexBetterAuthProvider} from '@convex-dev/better-auth/react';`;
+const sizes = [];
+for (const source of [
+  baseline,
+  baseline + `export {createAuthDataClient,AuthDataProvider} from '@strawdev/auth-client';`,
+]) {
+  const result = await build({
+    stdin: { contents: source, resolveDir: directory },
+    metafile: true,
+    bundle: true,
+    write: false,
+    minify: true,
+    platform: "browser",
+    format: "esm",
+    define: { "process.env.NODE_ENV": '"production"' },
+  });
+  if (Object.keys(result.metafile.inputs).some((path) => /auth-client\/dist\/convex\//.test(path)))
+    throw new Error("Client export includes backend code");
+  sizes.push({
+    bytes: result.outputFiles[0].contents.length,
+    gzip: gzipSync(result.outputFiles[0].contents).length,
+  });
+}
+const backend = await build({
+  stdin: {
+    contents:
+      "export * from '@strawdev/auth-client/convex'; export * from '@strawdev/auth-client/convex/component';",
+    resolveDir: directory,
+  },
+  bundle: true,
+  write: false,
+  platform: "node",
+  format: "esm",
+  metafile: true,
+});
+if (
+  Object.keys(backend.metafile.inputs).some((path) =>
+    /node_modules\/(?:\.pnpm\/)?(?:react|@tanstack)/.test(path),
+  )
+)
+  throw new Error("Backend exports include React or TanStack Query");
+console.log(
+  JSON.stringify(
+    {
+      source: process.env.AUTH_CLIENT_GIT_SOURCE ?? join(directory, tarball),
+      consumer: "passed",
+      baseline: sizes[0],
+      withAdapter: sizes[1],
+      incremental: { bytes: sizes[1].bytes - sizes[0].bytes, gzip: sizes[1].gzip - sizes[0].gzip },
+    },
+    null,
+    2,
+  ),
+);

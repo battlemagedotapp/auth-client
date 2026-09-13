@@ -1,0 +1,21 @@
+{
+  "name": "@example/backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "check": "tsc --noEmit && tsc --noEmit -p convex",
+    "schema": "auth generate --config convex/betterAuth/auth.ts --output convex/betterAuth/generatedSchema.ts --yes"
+  },
+  "dependencies": {
+    "@better-auth/expo": "1.6.22",
+    "@convex-dev/better-auth": "0.12.5",
+    "@strawdev/auth-client": "workspace:*",
+    "better-auth": "1.6.22",
+    "convex": "1.45.0"
+  },
+  "devDependencies": {
+    "auth": "1.6.22",
+    "typescript": "6.0.3"
+  }
+}
