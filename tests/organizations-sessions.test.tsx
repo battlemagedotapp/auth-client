@@ -162,6 +162,62 @@ const initial = (organization: { name: string; slug: string }) => ({
   slug: organization.slug,
 });
 
+it("shares one typed form across controls and retains its draft across schema updates", async () => {
+  const f = fixture();
+  const schema = z.object({ name: z.string().trim().min(1), slug: z.string() });
+  const Settings = f.authData.defineOrganizationSettings(schema);
+  let selectedSchema = schema;
+  const hook = renderHook(
+    () => [Settings.useWorkflowContext(), Settings.useWorkflowContext()] as const,
+    {
+      wrapper: ({ children }) => (
+        <f.wrapper>
+          <Settings.Root organizationId="org" getInitialValues={initial} schema={selectedSchema}>
+            {children}
+          </Settings.Root>
+        </f.wrapper>
+      ),
+    },
+  );
+  await waitFor(() => expect(hook.result.current[0].form).not.toBeNull());
+  expect(hook.result.current[0]).toBe(hook.result.current[1]);
+  act(() => hook.result.current[0].form!.field("name").onChange("  Draft  "));
+  selectedSchema = z.object({
+    name: z.string().trim().min(1, "Localized validation"),
+    slug: z.string(),
+  });
+  hook.rerender();
+  expect(hook.result.current[1].form!.field("name").value).toBe("  Draft  ");
+  await act(async () => {
+    expect(await hook.result.current[1].form!.actions.submit.run()).toMatchObject({
+      status: "success",
+    });
+  });
+  expect(f.writes).toEqual([
+    { path: "update", body: { organizationId: "org", data: { name: "Draft", slug: "original" } } },
+  ]);
+  act(() => f.switchIdentity());
+  hook.rerender();
+  await waitFor(() => expect(hook.result.current[0].form?.field("name").value).toBe("Draft"));
+  expect(hook.result.current[0].form?.isDirty).toBe(false);
+});
+
+it("does not substitute another definition's context for the matching root", () => {
+  const f = fixture();
+  const schema = z.object({ name: z.string(), slug: z.string() });
+  const First = f.authData.defineOrganizationCreateForm(schema);
+  const Second = f.authData.defineOrganizationCreateForm(schema);
+  expect(() =>
+    renderHook(() => Second.useWorkflowContext(), {
+      wrapper: ({ children }) => (
+        <f.wrapper>
+          <First.Root initialValues={{ name: "", slug: "" }}>{children}</First.Root>
+        </f.wrapper>
+      ),
+    }),
+  ).toThrow("matching root");
+});
+
 it.each(["update", "leave", "delete"] as const)(
   "%s holds navigation after write or synchronization failure and retries only the read",
   async (operation) => {
@@ -181,8 +237,8 @@ it.each(["update", "leave", "delete"] as const)(
     await waitFor(() => expect(hook.result.current.form).not.toBeNull());
     const perform = () =>
       operation === "update"
-        ? hook.result.current.update({ slug: "renamed" })
-        : hook.result.current[operation]();
+        ? hook.result.current.actions.update.run({ slug: "renamed" })
+        : hook.result.current.actions[operation].run();
     f.failures.set(operation, "WRITE_DENIED");
     await act(async () => {
       expect(await perform()).toMatchObject({
@@ -191,7 +247,7 @@ it.each(["update", "leave", "delete"] as const)(
       });
     });
     expect(navigate).not.toHaveBeenCalled();
-    expect(hook.result.current.pendingSync).toBeNull();
+    expect(hook.result.current.feedback.every((entry) => entry.recovery === null)).toBe(true);
     f.failures.delete(operation);
     f.failures.set("list", "OFFLINE");
     await act(async () => {
@@ -203,46 +259,57 @@ it.each(["update", "leave", "delete"] as const)(
     expect(navigate).not.toHaveBeenCalled();
     expect(f.writes).toHaveLength(1);
     act(() => hook.result.current.reset());
-    expect(hook.result.current.pendingSync?.operation).toBe(operation);
+    expect(hook.result.current.feedback[0]?.target.operation).toBe(operation);
+    expect(hook.result.current.actions[operation].disabledReason).toEqual({ code: "recovery" });
     await act(async () => {
       expect(await perform()).toMatchObject({ status: "ignored", reason: "unavailable" });
     });
     f.failures.delete("list");
     await act(async () => {
-      expect(await hook.result.current.retrySync()).toMatchObject({ status: "success" });
+      expect(await hook.result.current.feedback[0]!.recovery!.run()).toMatchObject({
+        status: "success",
+      });
     });
     expect(f.writes).toHaveLength(1);
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate.mock.calls[0]?.[0]).toMatchObject({ operation, organizationId: "org" });
     if (operation === "update")
       expect(navigate.mock.calls[0]?.[0]).toMatchObject({ organization: { slug: "renamed" } });
-    await act(async () => {
-      await hook.result.current.retrySync();
-    });
+    expect(hook.result.current.feedback).toHaveLength(0);
     expect(navigate).toHaveBeenCalledOnce();
   },
 );
 
-it("allows canonical navigation to unmount its initiating workflow without replaying the write", async () => {
-  const f = fixture();
-  let unmount = () => {};
-  const navigate = vi.fn(() => unmount());
-  const hook = renderHook(
-    () =>
-      f.authData.useOrganizationCreateForm({
-        initialValues: { name: "New", slug: "new" },
-        onCreated: navigate,
-      }),
-    { wrapper: f.wrapper },
-  );
-  unmount = hook.unmount;
-  await waitFor(() => expect(hook.result.current.isPending).toBe(false));
-  await act(async () => {
-    expect(await hook.result.current.submit()).toEqual({ status: "ignored", reason: "obsolete" });
-  });
-  expect(navigate).toHaveBeenCalledOnce();
-  expect(f.writes).toHaveLength(1);
-});
+it.each([false, true])(
+  "reports delivered completion after navigation, including callback failure=%s",
+  async (failCallback) => {
+    const f = fixture();
+    let unmount = () => {};
+    const navigate = vi.fn(() => {
+      unmount();
+      if (failCallback) throw new Error("Navigation failed after departure");
+    });
+    const hook = renderHook(
+      () =>
+        f.authData.useOrganizationCreateForm({
+          initialValues: { name: "New", slug: "new" },
+          onCreated: navigate,
+        }),
+      { wrapper: f.wrapper },
+    );
+    unmount = hook.unmount;
+    await waitFor(() => expect(hook.result.current.isPending).toBe(false));
+    await act(async () => {
+      expect(await hook.result.current.actions.submit.run()).toMatchObject(
+        failCallback
+          ? { status: "error", error: { phase: "callback", writeSucceeded: true } }
+          : { status: "success", data: { organization: { slug: "new" } } },
+      );
+    });
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(f.writes).toHaveLength(1);
+  },
+);
 
 it("does not navigate back after leaving a screen during post-write synchronization", async () => {
   const f = fixture();
@@ -270,7 +337,7 @@ it("does not navigate back after leaving a screen during post-write synchronizat
   });
   let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.update({ name: "Updated" });
+    pending = hook.result.current.actions.update.run({ name: "Updated" });
   });
   await waitFor(() => expect(refreshing).toBe(true));
   expect(f.writes).toHaveLength(1);
@@ -293,7 +360,7 @@ it("keeps directory selection controlled and applies fallback only without an ex
   );
   await waitFor(() => expect(hook.result.current.status).toBe("unselected"));
   await act(async () => {
-    expect(await hook.result.current.selectOrganization("org")).toMatchObject({
+    expect(await hook.result.current.select("org").run()).toMatchObject({
       status: "success",
     });
   });
@@ -327,7 +394,7 @@ it("creates from a transformed draft, preserves active selection, and retries on
   await waitFor(() => expect(hook.result.current.isPending).toBe(false));
   f.failures.set("list", "SYNC_DOWN");
   await act(async () => {
-    expect(await hook.result.current.submit()).toMatchObject({
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({
       status: "error",
       error: { phase: "synchronization", writeSucceeded: true },
     });
@@ -335,23 +402,23 @@ it("creates from a transformed draft, preserves active selection, and retries on
   expect(f.writes[0]?.body).toMatchObject({ slug: "new", keepCurrentActiveOrganization: true });
   expect(onCreated).not.toHaveBeenCalled();
   act(() => hook.result.current.reset());
-  expect(hook.result.current.pendingSync?.operation).toBe("create");
+  expect(hook.result.current.feedback[0]?.target.operation).toBe("create");
   await act(async () => {
-    expect(await hook.result.current.submit()).toEqual({
+    expect(await hook.result.current.actions.submit.run()).toEqual({
       status: "ignored",
       reason: "unavailable",
     });
   });
   f.failures.delete("list");
   await act(async () => {
-    expect(await hook.result.current.retrySync()).toMatchObject({
+    expect(await hook.result.current.feedback[0]!.recovery!.run()).toMatchObject({
       status: "success",
       data: { organization: { slug: "new" } },
     });
   });
   expect(f.writes).toHaveLength(1);
   expect(onCreated).toHaveBeenCalledOnce();
-  expect(hook.result.current.pendingSync).toBeNull();
+  expect(hook.result.current.feedback).toHaveLength(0);
 });
 
 it("adopts pristine server settings, preserves dirty drafts, and resolves a renamed slug canonically", async () => {
@@ -391,7 +458,7 @@ it("adopts pristine server settings, preserves dirty drafts, and resolves a rena
   expect(hook.result.current.form!.values.name).toBe("New remote");
   act(() => hook.result.current.form!.field("slug").onChange("CANONICAL"));
   await act(async () => {
-    expect(await hook.result.current.form!.submit()).toMatchObject({
+    expect(await hook.result.current.form!.actions.submit.run()).toMatchObject({
       status: "success",
       data: { organization: { slug: "canonical" } },
     });
@@ -433,12 +500,15 @@ it("prepares deletion under an exclusive organization lock and leaves unrelated 
   );
   let deleting!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    deleting = settings.result.current.delete();
+    deleting = settings.result.current.actions.delete.run();
   });
   await waitFor(() => expect(beforeDelete).toHaveBeenCalledOnce());
   await act(async () => {
-    expect(await invite.result.current.submit()).toEqual({ status: "ignored", reason: "busy" });
-    expect(await other.result.current.update({ name: "Independent" })).toMatchObject({
+    expect(await invite.result.current.actions.submit.run()).toEqual({
+      status: "ignored",
+      reason: "busy",
+    });
+    expect(await other.result.current.actions.update.run({ name: "Independent" })).toMatchObject({
       status: "success",
     });
   });
@@ -474,7 +544,7 @@ it.each(["failure", "unmount", "identity", "disable", "dispose"] as const)(
     await waitFor(() => expect(hook.result.current.form).toBeTruthy());
     let pending!: Promise<WorkflowOutcome<unknown>>;
     act(() => {
-      pending = hook.result.current.delete();
+      pending = hook.result.current.actions.delete.run();
     });
     await waitFor(() => expect(signal).toBeDefined());
     if (transition === "unmount") hook.unmount();
@@ -517,7 +587,7 @@ it("enforces changed policies after preparation and preserves policy error codes
   await waitFor(() => expect(hook.result.current.form).toBeTruthy());
   let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.delete();
+    pending = hook.result.current.actions.delete.run();
   });
   hook.rerender({ permitted: false });
   await act(async () => {
@@ -546,10 +616,11 @@ it("owns member pagination, clamps after removal, resets queries, and applies ro
   act(() => hook.result.current.nextPage());
   await waitFor(() => expect(hook.result.current.members[0]?.id).toBe("c"));
   await act(async () => {
-    expect(
-      await hook.result.current.updateMemberRole({ memberId: "c", role: "admin" }),
-    ).toMatchObject({ status: "error", error: { cause: { code: "role-not-assignable" } } });
-    expect(await hook.result.current.removeMember({ memberId: "c" })).toMatchObject({
+    expect(await hook.result.current.member("c").updateRole("admin").run()).toMatchObject({
+      status: "error",
+      error: { cause: { code: "role-not-assignable" } },
+    });
+    expect(await hook.result.current.member("c").remove.run()).toMatchObject({
       status: "success",
     });
   });
@@ -570,12 +641,14 @@ it("keeps session tokens internal to revocation and coordinates individual and s
   expect(first.result.current.currentSessionId).toBe("current");
   let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = first.result.current.revokeSession("second");
+    pending = first.result.current.session("second").revoke.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
-  expect(JSON.stringify(first.result.current.pendingAction)).not.toContain("token");
+  expect(first.result.current.session("second").revoke.isPending).toBe(true);
+  expect(second.result.current.actions.revokeOthers.disabledReason).toEqual({ code: "busy" });
+  expect(JSON.stringify(first.result.current.diagnostics.pendingAction)).not.toContain("token");
   await act(async () => {
-    expect(await second.result.current.revokeOtherSessions()).toEqual({
+    expect(await second.result.current.actions.revokeOthers.run()).toEqual({
       status: "ignored",
       reason: "busy",
     });
@@ -583,8 +656,9 @@ it("keeps session tokens internal to revocation and coordinates individual and s
     await pending;
   });
   expect(f.writes[0]?.body).toEqual({ token: "private-second-token" });
+  expect(second.result.current.actions.revokeOthers.isDisabled).toBe(false);
   await act(async () => {
-    expect(await first.result.current.revokeSession("missing")).toEqual({
+    expect(await first.result.current.session("missing").revoke.run()).toEqual({
       status: "ignored",
       reason: "unavailable",
     });
@@ -616,7 +690,7 @@ it("suppresses callbacks when session revocation outlives the initiating identit
   await waitFor(() => expect(hook.result.current.data).toHaveLength(2));
   let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.revokeSessions();
+    pending = hook.result.current.actions.revokeAll.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   f.switchIdentity();
@@ -626,7 +700,7 @@ it("suppresses callbacks when session revocation outlives the initiating identit
     expect(await pending).toEqual({ status: "ignored", reason: "obsolete" });
   });
   expect(onRevoked).not.toHaveBeenCalled();
-  expect(hook.result.current.pendingAction).toBeNull();
+  expect(hook.result.current.diagnostics.pendingAction).toBeNull();
 });
 
 it("shares member locks across duplicates and never repeats a write after callback failure", async () => {
@@ -648,11 +722,11 @@ it("shares member locks across duplicates and never repeats a write after callba
   await waitFor(() => expect(second.result.current.members).toHaveLength(2));
   let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = first.result.current.updateMemberRole({ memberId: "a", role: "admin" });
+    pending = first.result.current.member("a").updateRole("admin").run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   await act(async () => {
-    expect(await second.result.current.removeMember({ memberId: "a" })).toEqual({
+    expect(await second.result.current.member("a").remove.run()).toEqual({
       status: "ignored",
       reason: "busy",
     });

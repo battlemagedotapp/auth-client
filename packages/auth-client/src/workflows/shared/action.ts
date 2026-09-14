@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { workflowLocks } from "./locks.js";
 import { useMutation } from "@tanstack/react-query";
 import { useClientBoundary } from "../../client/provider-context.js";
 import type { CacheRuntime } from "../../cache/query-cache.js";
@@ -7,6 +8,9 @@ import type {
   WorkflowOutcome,
   WorkflowPendingAction,
   PolicyDecision,
+  WorkflowDisabledReason,
+  WorkflowFeedback,
+  WorkflowFeedbackOptions,
 } from "./types.js";
 
 export type Values = Record<string, unknown>;
@@ -27,6 +31,8 @@ export function enforcePolicy(decision: PolicyDecision) {
 }
 export const allowed: PolicyDecision = { allowed: true };
 export const denied = (code: string): PolicyDecision => ({ allowed: false, code });
+export const policyReason = (decision: PolicyDecision): WorkflowDisabledReason | null =>
+  decision.allowed ? null : { code: "policy", policyCode: decision.code };
 export function useCommittedRef<T>(value: T) {
   const ref = useRef(value);
   useLayoutEffect(() => {
@@ -36,32 +42,62 @@ export function useCommittedRef<T>(value: T) {
 }
 export function getActionState(action: ReturnType<typeof useWorkflowAction>) {
   return {
-    isBusy: action.isBusy,
-    pendingAction: action.pendingAction,
-    error: action.error,
+    feedback: action.feedback(),
+    diagnostics: { pendingAction: action.pendingAction, error: action.error },
     reset: action.reset,
   };
 }
-type Lock = { key: string; exclusive: boolean };
-const locks = new WeakMap<CacheRuntime, Map<symbol, Lock[]>>();
 export type ActionExecution = {
   write(
     fn: () => Promise<unknown>,
     target?: string | Partial<WorkflowPendingAction>,
   ): Promise<unknown>;
   current(): boolean;
+  complete(callback: () => void | Promise<void>): Promise<void>;
   phase(phase: WorkflowError["phase"]): void;
   signal: AbortSignal;
 };
 
+type OperationState = {
+  owner: symbol;
+  pending: WorkflowPendingAction | null;
+  error: WorkflowError | null;
+  target?: WorkflowPendingAction;
+};
+
+// Recovery already presents its operation's error; don't render it a second time.
+function operationFeedback(
+  state: OperationState | undefined,
+  recoveries: WorkflowFeedback[],
+): WorkflowFeedback[] {
+  if (!state?.error || !state.target) return recoveries;
+  const { target, error } = state;
+  const represented = recoveries.some(
+    (entry) =>
+      entry.target.operation === target.operation &&
+      entry.target.invitationId === target.invitationId &&
+      (target.invitationId !== undefined || entry.target.organizationId === target.organizationId),
+  );
+  return represented
+    ? recoveries
+    : [...recoveries, { target, error: error.cause, diagnostics: error, recovery: null }];
+}
+
 /** TanStack observes writes; this coordinator owns only locks and guarded continuations. */
-export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled = true) {
+export function useWorkflowAction(
+  runtime: CacheRuntime,
+  scope: string,
+  enabled = true,
+  options: WorkflowFeedbackOptions = {},
+) {
+  const callbacks = useCommittedRef(options);
+  const locks = workflowLocks(runtime);
+  useSyncExternalStore(locks.subscribe, locks.getSnapshot, locks.getSnapshot);
   const { identity, disposed } = useClientBoundary(runtime);
   const key = JSON.stringify([identity, scope, disposed]);
   const [boundary, setBoundary] = useState(() => ({ key, owner: Symbol() }));
-  const currentBoundary = boundary.key === key ? boundary : { key, owner: Symbol() };
-  if (boundary.key !== key) setBoundary(currentBoundary);
-  const { owner } = currentBoundary;
+  if (boundary.key !== key) setBoundary({ key, owner: Symbol() });
+  const { owner } = boundary;
   const lifecycle = useRef({
     owner,
     active: false,
@@ -80,11 +116,7 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
     },
     runtime.cache,
   );
-  const [feedback, setFeedback] = useState<{
-    owner: symbol;
-    pending: WorkflowPendingAction | null;
-    error: WorkflowError | null;
-  }>();
+  const [feedback, setFeedback] = useState<OperationState>();
   useLayoutEffect(() => {
     const lease = {
       owner,
@@ -127,44 +159,8 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
     if (!lifecycle.current.available) return ignored("disabled");
     if (busy()) return ignored("busy");
     const generation = runtime.generation;
-    let shared = locks.get(runtime);
-    if (!shared) {
-      shared = new Map();
-      locks.set(runtime, shared);
-    }
-    const token = Symbol();
-    const acquired: Lock[] = [];
-    function claim(target: WorkflowPendingAction) {
-      const requested: Lock[] = [];
-      const add = (kind: string, id: string, exclusive = true) =>
-        requested.push({ key: JSON.stringify([generation, kind, id]), exclusive });
-      if (target.organizationId)
-        add(
-          "organization",
-          target.organizationId,
-          target.operation === "delete" || target.operation === "leave",
-        );
-      if (target.invitationId) add("invitation", target.invitationId);
-      if (target.memberId) add("member", `${target.organizationId}:${target.memberId}`);
-      if (target.operation.startsWith("revoke"))
-        add("sessions", identity.userId ?? "", target.operation !== "revokeSession");
-      if (target.sessionId) add("session", target.sessionId);
-      for (const [holder, held] of shared!)
-        if (
-          holder !== token &&
-          requested.some((request) =>
-            held.some((lock) => lock.key === request.key && (lock.exclusive || request.exclusive)),
-          )
-        )
-          throw conflict;
-      acquired.push(...requested);
-      shared!.set(token, acquired);
-    }
-    try {
-      claim(pending);
-    } catch {
-      return ignored("busy");
-    }
+    const lock = locks.acquire(pending, generation);
+    if (!lock) return ignored("busy");
     const lease = lifecycle.current;
     lease.busy = true;
     const controller = new AbortController();
@@ -173,6 +169,7 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
     setFeedback({ owner, pending, error: null });
     let phase: WorkflowError["phase"] = "write";
     let writeSucceeded = alreadyWritten;
+    let completionDelivered = false;
     const valid = () =>
       current() &&
       lifecycle.current === lease &&
@@ -186,6 +183,12 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
         phase: (next) => {
           phase = next;
         },
+        complete: async (callback) => {
+          if (!valid()) throw new Error("Obsolete workflow completion");
+          phase = "callback";
+          completionDelivered = true;
+          await callback();
+        },
         write: async (fn, target) => {
           if (!valid()) throw new Error("Obsolete workflow");
           if (target) {
@@ -193,7 +196,7 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
               ...pending,
               ...(typeof target === "string" ? { invitationId: target } : target),
             };
-            claim(pending);
+            if (!lock.extend(pending)) throw conflict;
             setFeedback({ owner, pending, error: null });
           }
           const result = await mutateAsync(() => {
@@ -204,18 +207,20 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
           return result;
         },
       });
-      if (!valid()) return ignored("obsolete");
-      setFeedback({ owner, pending: null, error: null });
+      if (!valid() && !completionDelivered) return ignored("obsolete");
       return { status: "success", data };
     } catch (cause) {
-      if (!valid()) return ignored("obsolete");
+      if (!valid() && !completionDelivered) return ignored("obsolete");
       if (cause === conflict) return ignored("busy");
       if (cause === unavailable) return ignored("unavailable");
       const error = { phase, cause, writeSucceeded };
-      setFeedback({ owner, pending: null, error });
+      if (valid()) {
+        setFeedback({ owner, pending: null, error, target: pending });
+        callbacks.current.onError?.({ target: pending, error: cause, diagnostics: error });
+      }
       return { status: "error", error };
     } finally {
-      shared.delete(token);
+      lock.release();
       lease.controllers.delete(controller);
       if (current() && lifecycle.current === lease) {
         lease.busy = false;
@@ -227,7 +232,25 @@ export function useWorkflowAction(runtime: CacheRuntime, scope: string, enabled 
     }
   }
   const visible = available && feedback?.owner === owner ? feedback : undefined;
+  function control(target: WorkflowPendingAction, reason: WorkflowDisabledReason | null = null) {
+    const disabledReason = !available
+      ? { code: "disabled" as const }
+      : visible?.pending != null || locks.conflicts(target, runtime.generation)
+        ? { code: "busy" as const }
+        : reason;
+    return {
+      isDisabled: disabledReason !== null,
+      isPending:
+        visible?.pending != null &&
+        Object.entries(target).every(
+          ([key, value]) => visible.pending?.[key as keyof WorkflowPendingAction] === value,
+        ),
+      disabledReason,
+    };
+  }
   return {
+    control,
+    feedback: (recoveries: WorkflowFeedback[] = []) => operationFeedback(visible, recoveries),
     owner,
     actorId: identity.userId,
     available,

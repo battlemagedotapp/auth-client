@@ -6,10 +6,11 @@ import { useCommittedRef, type useWorkflowAction, type ActionExecution } from ".
 import { hashKey } from "@tanstack/react-query";
 import type { FormFieldErrors, FormFieldIssue } from "./types.js";
 import type { WorkflowOperation } from "./types.js";
+import type { WorkflowDisabledReason, WorkflowFeedbackOptions } from "./types.js";
 
 type Values = Record<string, unknown>;
 type Resolution = ResolverResult<Values, Values>;
-export type FormOptions = {
+export type FormOptions = WorkflowFeedbackOptions & {
   initialValues: Values;
   schema?: ZodType<Values, Values>;
   enabled?: boolean;
@@ -26,6 +27,7 @@ type Execution = {
   resetToDraft?: boolean;
   syncDefaults?: boolean;
   blocked?: boolean;
+  disabledReason?: WorkflowDisabledReason | null;
 };
 // RHF treats dots/brackets as paths. Encode literal Better Auth field names.
 const encode = (name: string) =>
@@ -250,6 +252,7 @@ export function useWorkflowForm(
     const key = encode(name);
     register(key);
     return {
+      name,
       value: values[name],
       error: fieldErrors[name],
       isDisabled: !action.available || action.isBusy || execution.blocked === true,
@@ -302,6 +305,19 @@ export function useWorkflowForm(
     );
   }
   return {
+    actions: {
+      submit: {
+        ...action.control(
+          {
+            operation: execution.operation,
+            ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
+          },
+          execution.disabledReason ?? (execution.blocked ? { code: "unavailable" } : null),
+        ),
+        run: submit,
+      },
+    },
+    feedback: action.feedback(),
     values,
     hasServerChanges,
     touched: Object.fromEntries(
@@ -314,10 +330,7 @@ export function useWorkflowForm(
     isDirty: matches && isDirty,
     isValidating: matches && isValidating,
     field,
-    submit,
     reset,
-    isBusy: action.isBusy,
-    pendingAction: action.pendingAction,
-    error: action.error,
+    diagnostics: { pendingAction: action.pendingAction, error: action.error },
   };
 }

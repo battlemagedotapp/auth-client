@@ -1,5 +1,15 @@
 # Verification
 
+## v0.3.0-rc.1 candidate — 2026-09-14
+
+The workflow contract now uses ordinary-child roots and matching context hooks, typed schema definitions, action handles, value-only fields, and bound read-only recovery. Superseded workflow aliases and public recovery receipts are removed. Low-level methods, the private cache, official authentication integration, and transactional signals remain unchanged.
+
+Qualification: `pnpm verify` passes 77 controlled tests and source/type/lint/format checks. All eight isolated local Convex/Expo Web browser journeys pass; the two settings/deletion journeys also pass after the final readiness simplification. Package and Git consumer checks are rerun for the candidate version before publication. Gaia integration qualification is still pending; this is not stable-release approval.
+
+Fallow: no new dead-code or styling findings. Retained findings are the explicit guarded action runner (completion-before-departure differs from departure-before-completion), two browser-covered example controls with estimated coverage warnings, and two small invitation fragments whose different operations/presentation do not justify another abstraction. Seven inherited dead-code findings and eleven inherited complexity findings are separate from this change. No suppressions were added. Graph review confirmed the intentional breaking API boundary; installed declaration tests and the converted example cover the library-side consumers.
+
+Native execution remains unverified. Member pagination remains HTTP-prefix based. The example stays on its isolated local backend; no production deployment is involved.
+
 ## v0.2.0 release qualification — 2026-09-14
 
 The user selected `v0.2.0` without a prerelease suffix. The package version and installation examples are updated accordingly. `pnpm verify` passes with 74 controlled tests; both `pnpm test:package` and `pnpm test:git` pass using the exact `0.2.0` manifest, strict installed declarations, backend declaration/runtime separation, source maps, and compilation-free installation. The preceding full browser run passed all 8 journeys; no runtime code changed after that run. The measured adapter increment remains 194,706 bytes minified / 59,300 gzip.

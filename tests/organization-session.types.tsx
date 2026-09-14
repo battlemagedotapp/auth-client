@@ -34,6 +34,37 @@ const schema = z.object({
   slug: z.string(),
   ticket: z.string().transform(Number),
 });
+const DefinedSettings = client.defineOrganizationSettings(schema);
+const DefinedCreate = client.defineOrganizationCreateForm(schema);
+function DefinedSettingsControls() {
+  const settings = DefinedSettings.useWorkflowContext();
+  const ticket: string | undefined = settings.form?.field("ticket").value;
+  // @ts-expect-error the context retains the editable input, not parsed output
+  settings.form?.field("ticket").onChange(123);
+  // @ts-expect-error direct writes still use the server field type
+  void settings.actions.update.run({ ticket: "123" });
+  void ticket;
+  return null;
+}
+export function DefinedForms() {
+  const create = DefinedCreate.useWorkflow({ initialValues: { name: "", slug: "", ticket: "" } });
+  const ticket: string = create.field("ticket").value;
+  void ticket;
+  return (
+    <DefinedSettings.Root
+      organizationId="org"
+      getInitialValues={(org) => ({ name: org.name, slug: org.slug, ticket: String(org.ticket) })}
+    >
+      <DefinedSettingsControls />
+    </DefinedSettings.Root>
+  );
+}
+client.defineOrganizationCreateForm(
+  // @ts-expect-error transformed output must satisfy the configured server contract
+  z.object({ name: z.string(), slug: z.string(), ticket: z.string() }),
+);
+// @ts-expect-error organization identity cannot be supplied through editable schema fields
+client.defineOrganizationSettings(schema.extend({ organizationId: z.string() }));
 export function TypedWorkflows() {
   const settings = client.useOrganizationSettings({
     organizationId: "org",
@@ -60,7 +91,7 @@ export function TypedWorkflows() {
   // @ts-expect-error transformed draft remains a string
   settings.form?.field("ticket").onChange(123);
   // @ts-expect-error updates preserve custom field types
-  void settings.update({ ticket: "123" });
+  void settings.actions.update.run({ ticket: "123" });
   const members = client.useOrganizationMembers({
     organizationId: "org",
     pageSize: 10,
@@ -72,18 +103,17 @@ export function TypedWorkflows() {
       },
     },
   });
-  void members.updateMemberRole({ memberId: "id", role: "reviewer" });
+  void members.member("id").updateRole("reviewer").run();
   // @ts-expect-error role payload retains the upstream string/string-array type
-  void members.updateMemberRole({ memberId: "id", role: 123 });
+  void members.member("id").updateRole(123).run();
   const sessions = client.useSessions();
   const expires: Date | undefined = sessions.currentSession?.expiresAt;
   // @ts-expect-error no credentials in pending state
-  void sessions.pendingAction?.token;
+  void sessions.diagnostics.pendingAction?.token;
   void expires;
   return (
     <>
-      <client.OrganizationCreateForm
-        schema={schema}
+      <DefinedCreate.Root
         initialValues={{ name: "", slug: "", ticket: "" }}
         onCreated={({ organization: org }) => {
           const ticket: number = org.ticket;
@@ -92,44 +122,22 @@ export function TypedWorkflows() {
           void [ticket, wrong];
         }}
       >
-        {(form) => {
-          const ticket: string = form.field("ticket").value;
-          // @ts-expect-error JSX bindings retain schema input types
-          const wrong: number = form.field("ticket").value;
-          void [ticket, wrong];
-          return null;
-        }}
-      </client.OrganizationCreateForm>
+        <OrganizationCreateFormControls1 />
+      </DefinedCreate.Root>
       <client.OrganizationSettings
         organizationSlug="slug"
         getInitialValues={(org) => ({ name: org.name, ticket: org.ticket })}
       >
-        {(state) => {
-          const ticket: number | undefined = state.form?.field("ticket").value;
-          void ticket;
-          return null;
-        }}
+        <OrganizationSettingsControls2 />
       </client.OrganizationSettings>
       <client.OrganizationMembers organizationId="id" pageSize={5}>
-        {(state) => {
-          const note: string | null | undefined = state.members[0]?.note;
-          void note;
-          return null;
-        }}
+        <OrganizationMembersControls3 />
       </client.OrganizationMembers>
       <client.OrganizationDirectory fallback="first">
-        {(state) => {
-          const ticket: number | undefined = state.organization?.ticket;
-          void ticket;
-          return null;
-        }}
+        <OrganizationDirectoryControls4 />
       </client.OrganizationDirectory>
       <client.Sessions>
-        {(state) => {
-          const id: string | undefined = state.currentSessionId;
-          void id;
-          return null;
-        }}
+        <SessionsControls5 />
       </client.Sessions>
     </>
   );
@@ -153,3 +161,36 @@ function InvalidContracts() {
   limited.useSessions();
 }
 void InvalidContracts;
+
+function OrganizationCreateFormControls1() {
+  const form = DefinedCreate.useWorkflowContext();
+  const ticket: string = form.field("ticket").value;
+  // @ts-expect-error JSX bindings retain schema input types
+  const wrong: number = form.field("ticket").value;
+  void [ticket, wrong];
+  return null;
+}
+function OrganizationSettingsControls2() {
+  const state = client.useOrganizationSettingsContext();
+  const ticket: number | undefined = state.form?.field("ticket").value;
+  void ticket;
+  return null;
+}
+function OrganizationMembersControls3() {
+  const state = client.useOrganizationMembersContext();
+  const note: string | null | undefined = state.members[0]?.note;
+  void note;
+  return null;
+}
+function OrganizationDirectoryControls4() {
+  const state = client.useOrganizationDirectoryContext();
+  const ticket: number | undefined = state.organization?.ticket;
+  void ticket;
+  return null;
+}
+function SessionsControls5() {
+  const state = client.useSessionsContext();
+  const id: string | undefined = state.currentSessionId;
+  void id;
+  return null;
+}

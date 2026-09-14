@@ -47,27 +47,7 @@ export function TypedForm() {
         void [ticket, wrong];
       }}
     >
-      {(form) => {
-        const email: string = form.field("email").value;
-        const ticket: number = form.field("ticket").value;
-        const note: string | null | undefined = form.field("note").value;
-        // @ts-expect-error optional custom fields retain their value type
-        form.field("note").onChange(123);
-        // @ts-expect-error owned form feedback is read-only
-        form.touched.email = true;
-        // @ts-expect-error owned field errors cannot be assigned by consumers
-        form.fieldErrors.email = { code: "external" };
-        form.field("role").onChange("reviewer");
-        // @ts-expect-error roles retain the configured union
-        form.field("role").onChange("owner");
-        // @ts-expect-error custom field setter retains its type
-        form.field("ticket").onChange("wrong");
-        // @ts-expect-error unsupported team input is not exposed
-        form.field("teamId");
-        const { reset, submit } = form;
-        void [email, ticket, note, reset, submit];
-        return null;
-      }}
+      <InvitationFormControls1 />
     </authData.InvitationForm>
   );
 }
@@ -82,18 +62,14 @@ export function TypedResponse() {
         void [description, wrong];
       }}
     >
-      {(state) => {
-        const ticket: number | undefined = state.invitation?.ticket;
-        void ticket;
-        return null;
-      }}
+      <InvitationResponseControls2 />
     </authData.InvitationResponse>
   );
 }
 export function useTypedWorkflow() {
   const invitations = authData.useOrganizationInvitations({ organizationId: "org" });
-  void invitations.resend({ email: "a@example.com", role: "reviewer", ticket: 1 });
-  // @ts-expect-error required custom fields cannot be dropped
+  void invitations.invitation("id").resend.run();
+  // @ts-expect-error resend resolves the observed invitation rather than accepting a replacement payload
   void invitations.resend({ email: "a@example.com", role: "reviewer" });
   // @ts-expect-error initial values must include required custom fields
   authData.useInvitationForm({ organizationId: "org", initialValues: { role: "reviewer" } });
@@ -114,10 +90,30 @@ const draftSchema = z.object({
   ticket: z.string().transform(Number),
   note: z.string().optional(),
 });
+const DefinedInvitation = authData.defineInvitationForm(draftSchema);
+function DefinedInvitationControls() {
+  const form = DefinedInvitation.useWorkflowContext();
+  const ticket: string = form.field("ticket").value;
+  // @ts-expect-error transformed context fields accept draft values only
+  form.field("ticket").onChange(42);
+  void ticket;
+  return null;
+}
+export function DefinedInvitationForm() {
+  return (
+    <DefinedInvitation.Root
+      organizationId="org"
+      initialValues={{ email: "", role: "reviewer", ticket: "" }}
+    >
+      <DefinedInvitationControls />
+    </DefinedInvitation.Root>
+  );
+}
+// @ts-expect-error a form definition cannot drop required custom server fields
+authData.defineInvitationForm(z.object({ email: z.string(), role: z.literal("reviewer") }));
 export function DraftForm() {
   return (
-    <authData.InvitationForm
-      schema={draftSchema}
+    <DefinedInvitation.Root
       organizationId="org"
       initialValues={{ email: "", role: "reviewer", ticket: "" }}
       validate={(values) => {
@@ -126,15 +122,8 @@ export function DraftForm() {
         return Promise.resolve({});
       }}
     >
-      {(form) => {
-        const ticket: string = form.values.ticket;
-        // @ts-expect-error editable ticket is a string, not the parsed output
-        form.field("ticket").onChange(4);
-        const { isDirty, isValidating } = form;
-        void [ticket, isDirty, isValidating];
-        return null;
-      }}
-    </authData.InvitationForm>
+      <InvitationFormControls3 />
+    </DefinedInvitation.Root>
   );
 }
 export function useSchemaTypes() {
@@ -164,7 +153,46 @@ export function useSchemaTypes() {
     initialValues: { email: "", role: "reviewer", ticket: "", organizationId: "other" },
   });
   const received = authData.useReceivedInvitations();
-  void received.retrySync("invite");
-  // @ts-expect-error list recovery now requires an explicit target
-  void received.retrySync();
+  void received.feedback[0]?.recovery?.run();
+}
+
+function InvitationFormControls1() {
+  const form = authData.useInvitationFormContext();
+  const email: string = form.field("email").value;
+  const ticket: number = form.field("ticket").value;
+  const note: string | null | undefined = form.field("note").value;
+  // @ts-expect-error optional custom fields retain their value type
+  form.field("note").onChange(123);
+  // @ts-expect-error owned form feedback is read-only
+  form.touched.email = true;
+  // @ts-expect-error owned field errors cannot be assigned by consumers
+  form.fieldErrors.email = { code: "external" };
+  form.field("role").onChange("reviewer");
+  // @ts-expect-error roles retain the configured union
+  form.field("role").onChange("owner");
+  // @ts-expect-error custom field setter retains its type
+  form.field("ticket").onChange("wrong");
+  // @ts-expect-error unsupported team input is not exposed
+  form.field("teamId");
+  const {
+    reset,
+    actions: { submit },
+  } = form;
+  void [email, ticket, note, reset, submit];
+  return null;
+}
+function InvitationResponseControls2() {
+  const state = authData.useInvitationResponseContext();
+  const ticket: number | undefined = state.invitation?.ticket;
+  void ticket;
+  return null;
+}
+function InvitationFormControls3() {
+  const form = DefinedInvitation.useWorkflowContext();
+  const ticket: string = form.values.ticket;
+  // @ts-expect-error editable ticket is a string, not the parsed output
+  form.field("ticket").onChange(4);
+  const { isDirty, isValidating } = form;
+  void [ticket, isDirty, isValidating];
+  return null;
 }

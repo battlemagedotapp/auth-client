@@ -11,7 +11,7 @@ import {
   AuthDataProvider,
   createAuthDataClient,
   type InvalidationApi,
-  type InvitationOutcome,
+  type WorkflowOutcome,
 } from "../packages/auth-client/src/index.js";
 
 let authenticated = true;
@@ -45,8 +45,10 @@ function fixture(transportRetries = 0) {
     email: "recipient@example.com",
     role: "member",
     status: "pending",
+    ticket: 42,
   };
   const directory = [{ id: "org", name: "Organization", slug: "canonical" }];
+  const invitations = [invitation];
   let directoryFails = false;
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   let writeHandler: ((path: string, body: Record<string, unknown>) => Promise<unknown>) | undefined;
@@ -71,7 +73,7 @@ function fixture(transportRetries = 0) {
         );
       value = directory;
     } else if (path.endsWith("get-invitation")) value = invitation;
-    else value = [invitation];
+    else value = invitations;
     return new Response(JSON.stringify(value), { headers: { "content-type": "application/json" } });
   });
   const upstream = createAuthClient({
@@ -97,6 +99,7 @@ function fixture(transportRetries = 0) {
     writes,
     transport,
     directory,
+    invitations,
     failDirectory: (value: boolean) => {
       directoryFails = value;
     },
@@ -124,9 +127,9 @@ it("owns form edits and validation, preserves edits across rerenders, and submit
       }),
     { wrapper: f.wrapper, initialProps: { organizationId: "org", email: "" } },
   );
-  let outcome: InvitationOutcome<unknown> | undefined;
+  let outcome: WorkflowOutcome<unknown> | undefined;
   await act(async () => {
-    outcome = await hook.result.current.submit();
+    outcome = await hook.result.current.actions.submit.run();
   });
   expect(outcome).toMatchObject({
     status: "error",
@@ -137,13 +140,16 @@ it("owns form edits and validation, preserves edits across rerenders, and submit
   act(() => hook.result.current.field("email").onChange("recipient@example.com"));
   hook.rerender({ organizationId: "org", email: "latest-default@example.com" });
   expect(hook.result.current.values.email).toBe("recipient@example.com");
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.submit();
+    pending = hook.result.current.actions.submit.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   await act(async () => {
-    expect(await hook.result.current.submit()).toEqual({ status: "ignored", reason: "busy" });
+    expect(await hook.result.current.actions.submit.run()).toEqual({
+      status: "ignored",
+      reason: "busy",
+    });
   });
   act(() => hook.result.current.field("email").onChange("blocked@example.com"));
   expect(hook.result.current.values.email).toBe("recipient@example.com");
@@ -166,34 +172,36 @@ it("owns form edits and validation, preserves edits across rerenders, and submit
 it("recovers accepted-invitation synchronization without repeating acceptance or replaying callbacks", async () => {
   const f = fixture();
   const onAccepted = vi.fn();
+  const onError = vi.fn();
   const hook = renderHook(
-    () => f.authData.useInvitationResponse({ invitationId: "invite", onAccepted }),
+    () => f.authData.useInvitationResponse({ invitationId: "invite", onAccepted, onError }),
     { wrapper: f.wrapper },
   );
   await waitFor(() => expect(hook.result.current.invitation?.id).toBe("invite"));
   f.failDirectory(true);
   await act(async () => {
-    expect(await hook.result.current.accept()).toMatchObject({
+    expect(await hook.result.current.actions.accept.run()).toMatchObject({
       status: "error",
       error: { phase: "synchronization", writeSucceeded: true },
     });
   });
   expect(onAccepted).not.toHaveBeenCalled();
+  expect(onError).toHaveBeenCalledOnce();
+  act(() => hook.result.current.reset());
+  expect(hook.result.current.actions.accept.disabledReason).toEqual({ code: "recovery" });
   await act(async () => {
-    expect(await hook.result.current.accept()).toMatchObject({ status: "ignored" });
+    expect(await hook.result.current.actions.accept.run()).toMatchObject({ status: "ignored" });
   });
   f.failDirectory(false);
   await act(async () => {
-    expect(await hook.result.current.retrySync()).toMatchObject({
+    expect(await hook.result.current.feedback[0]!.recovery!.run()).toMatchObject({
       status: "success",
       data: { organization: { slug: "canonical" } },
     });
   });
   expect(f.writes).toHaveLength(1);
   expect(onAccepted).toHaveBeenCalledTimes(1);
-  await act(async () => {
-    expect(await hook.result.current.retrySync()).toMatchObject({ status: "ignored" });
-  });
+  expect(hook.result.current.feedback).toHaveLength(0);
 });
 
 it("shares invitation locks across mounted workflows and retains them after the initiator unmounts", async () => {
@@ -208,14 +216,15 @@ it("shares invitation locks across mounted workflows and retains them after the 
     () => f.authData.useOrganizationInvitations({ organizationId: "org" }),
     { wrapper: f.wrapper },
   );
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  await waitFor(() => expect(first.result.current.data).toHaveLength(1));
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = first.result.current.reject("invite");
+    pending = first.result.current.invitation("invite").reject.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   first.unmount();
   await act(async () => {
-    expect(await second.result.current.cancel("invite")).toEqual({
+    expect(await second.result.current.invitation("invite").cancel.run()).toEqual({
       status: "ignored",
       reason: "busy",
     });
@@ -224,7 +233,9 @@ it("shares invitation locks across mounted workflows and retains them after the 
   });
   expect(callback).not.toHaveBeenCalled();
   await act(async () => {
-    expect(await second.result.current.cancel("invite")).toMatchObject({ status: "success" });
+    expect(await second.result.current.invitation("invite").cancel.run()).toMatchObject({
+      status: "success",
+    });
   });
   expect(f.writes).toHaveLength(2);
 });
@@ -246,9 +257,9 @@ it.each(["identity", "authentication", "dispose", "scope"] as const)(
       { wrapper: f.wrapper, initialProps: { organizationId: "org" } },
     );
     act(() => hook.result.current.field("email").onChange("private@example.com"));
-    let pending!: Promise<InvitationOutcome<unknown>>;
+    let pending!: Promise<WorkflowOutcome<unknown>>;
     act(() => {
-      pending = hook.result.current.submit();
+      pending = hook.result.current.actions.submit.run();
     });
     await waitFor(() => expect(f.writes).toHaveLength(1));
     if (transition === "identity") f.switchIdentity();
@@ -261,24 +272,29 @@ it.each(["identity", "authentication", "dispose", "scope"] as const)(
       expect(await pending).toEqual({ status: "ignored", reason: "obsolete" });
     });
     expect(callback).not.toHaveBeenCalled();
-    expect(hook.result.current.error).toBeNull();
+    expect(hook.result.current.diagnostics.error).toBeNull();
   },
 );
 
 it("renders headless fields without adding elements or shadowing the application QueryClient", async () => {
   const f = fixture();
   const application = new QueryClient();
+  function Controls() {
+    const form = f.authData.useInvitationFormContext();
+    expect(useQueryClient()).toBe(application);
+    return (
+      <input
+        aria-label="email"
+        value={form.field("email").value}
+        onChange={(event) => form.field("email").onChange(event.target.value)}
+      />
+    );
+  }
   function Child() {
     expect(useQueryClient()).toBe(application);
     return (
       <f.authData.InvitationForm organizationId="org" initialValues={{ role: "member" }}>
-        {(form) => (
-          <input
-            aria-label="email"
-            value={form.field("email").value}
-            onChange={(event) => form.field("email").onChange(event.target.value)}
-          />
-        )}
+        <Controls />
       </f.authData.InvitationForm>
     );
   }
@@ -311,12 +327,19 @@ it("reports callback errors after successful writes and sends resend=true with a
   );
   await waitFor(() => expect(hook.result.current.data).toHaveLength(1));
   await act(async () => {
-    expect(
-      await hook.result.current.resend({ email: "recipient@example.com", role: "member" }),
-    ).toMatchObject({ status: "error", error: { phase: "callback", writeSucceeded: true } });
+    expect(await hook.result.current.invitation("invite").resend.run()).toMatchObject({
+      status: "error",
+      error: { phase: "callback", writeSucceeded: true },
+    });
   });
   expect(f.writes).toHaveLength(1);
-  expect(f.writes[0]?.body).toMatchObject({ organizationId: "org", resend: true });
+  expect(f.writes[0]?.body).toEqual({
+    organizationId: "org",
+    resend: true,
+    email: "recipient@example.com",
+    role: "member",
+    ticket: 42,
+  });
 });
 
 it("preserves server write codes, never retries, and disables workflow actions explicitly", async () => {
@@ -338,12 +361,16 @@ it("preserves server write codes, never retries, and disables workflow actions e
     },
   );
   await act(async () => {
-    expect(await hook.result.current.accept()).toEqual({ status: "ignored", reason: "disabled" });
+    expect(await hook.result.current.actions.accept.run()).toEqual({
+      status: "ignored",
+      reason: "disabled",
+    });
   });
   expect(f.transport).not.toHaveBeenCalled();
   hook.rerender({ enabled: true });
+  await waitFor(() => expect(hook.result.current.invitation?.id).toBe("invite"));
   await act(async () => {
-    expect(await hook.result.current.accept()).toMatchObject({
+    expect(await hook.result.current.actions.accept.run()).toMatchObject({
       status: "error",
       error: {
         phase: "write",
@@ -439,32 +466,32 @@ it("shares known-ID locks with resend forms and keeps acceptance callback failur
     { wrapper: f.wrapper },
   );
   await waitFor(() => expect(response.result.current.invitation?.id).toBe("invite"));
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = response.result.current.accept();
+    pending = response.result.current.actions.accept.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   await act(async () => {
-    expect(await form.result.current.submit()).toEqual({ status: "ignored", reason: "busy" });
+    expect(await form.result.current.actions.submit.run()).toEqual({
+      status: "ignored",
+      reason: "busy",
+    });
     hold.resolve({ member: { organizationId: "org" } });
     expect(await pending).toMatchObject({
       status: "error",
       error: { phase: "callback", writeSucceeded: true },
     });
-    expect(await response.result.current.retrySync()).toMatchObject({
-      status: "ignored",
-      reason: "unavailable",
-    });
   });
+  expect(response.result.current.feedback.every((entry) => entry.recovery === null)).toBe(true);
   expect(f.writes).toHaveLength(1);
 });
 
 it("does not send a queued write after its initiating workflow unmounts", async () => {
   const f = fixture();
   const hook = renderHook(() => f.authData.useReceivedInvitations(), { wrapper: f.wrapper });
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.reject("invite");
+    pending = hook.result.current.invitation("invite").reject.run();
     hook.unmount();
   });
   await act(async () => {
@@ -485,9 +512,10 @@ it("does not resurrect a completion after disabling and re-enabling its workflow
       initialProps: { enabled: true },
     },
   );
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  await waitFor(() => expect(hook.result.current.data).toHaveLength(1));
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.reject("invite");
+    pending = hook.result.current.invitation("invite").reject.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   hook.rerender({ enabled: false });
@@ -501,6 +529,7 @@ it("does not resurrect a completion after disabling and re-enabling its workflow
 
 it("retires disconnected React effects without letting an old completion clear a new action", async () => {
   const f = fixture();
+  f.invitations.push({ ...f.invitations[0]!, id: "other-invite" });
   const first = deferred<unknown>();
   const second = deferred<unknown>();
   f.handleWrite((_path, body) => (body.invitationId === "invite" ? first.promise : second.promise));
@@ -514,18 +543,19 @@ it("retires disconnected React effects without letting an old completion clear a
   const hook = renderHook(() => f.authData.useReceivedInvitations({ onRejected: callback }), {
     wrapper,
   });
-  let previous!: Promise<InvitationOutcome<unknown>>;
+  await waitFor(() => expect(hook.result.current.data).toHaveLength(2));
+  let previous!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    previous = hook.result.current.reject("invite");
+    previous = hook.result.current.invitation("invite").reject.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
   hidden = true;
   hook.rerender();
   hidden = false;
   hook.rerender();
-  let next!: Promise<InvitationOutcome<unknown>>;
+  let next!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    next = hook.result.current.reject("other-invite");
+    next = hook.result.current.invitation("other-invite").reject.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(2));
   await act(async () => {
@@ -533,8 +563,8 @@ it("retires disconnected React effects without letting an old completion clear a
     expect(await previous).toEqual({ status: "ignored", reason: "obsolete" });
   });
   expect(callback).not.toHaveBeenCalled();
-  expect(hook.result.current.pendingAction?.invitationId).toBe("other-invite");
-  expect(hook.result.current.isBusy).toBe(true);
+  expect(hook.result.current.diagnostics.pendingAction?.invitationId).toBe("other-invite");
+  expect(hook.result.current.diagnostics.pendingAction !== null).toBe(true);
   await act(async () => {
     second.resolve({ id: "other-invite" });
     await next;
@@ -562,7 +592,7 @@ it("submits transformed drafts while RHF owns dirty state and reset defaults", a
     { wrapper: f.wrapper },
   );
   await act(async () => {
-    expect(await hook.result.current.submit()).toMatchObject({
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({
       status: "error",
       error: { phase: "validation" },
     });
@@ -571,7 +601,7 @@ it("submits transformed drafts while RHF owns dirty state and reset defaults", a
   act(() => hook.result.current.field("ticket").onChange("42"));
   expect(hook.result.current.isDirty).toBe(true);
   await act(async () => {
-    expect(await hook.result.current.submit()).toMatchObject({ status: "success" });
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({ status: "success" });
   });
   expect(f.writes[0]?.body.ticket).toBe(42);
   expect(hook.result.current.values.ticket).toBe("");
@@ -605,7 +635,7 @@ it("submits only schema output and omits optional undefined values before custom
     { wrapper: f.wrapper },
   );
   await act(async () => {
-    expect(await hook.result.current.submit()).toMatchObject({ status: "success" });
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({ status: "success" });
   });
   expect(validate).toHaveBeenCalledWith({ email: "recipient@example.com", role: "member" });
   expect(f.writes[0]?.body).not.toHaveProperty("draftOnly");
@@ -639,7 +669,7 @@ it("preserves literal field names and maps nested and root schema issues", async
     { wrapper: f.wrapper },
   );
   await act(async () => {
-    await hook.result.current.submit();
+    await hook.result.current.actions.submit.run();
   });
   expect(hook.result.current.field("case.number").error?.code).toBe("too_small");
   expect(hook.result.current.field("detail").error?.code).toBe("too_small");
@@ -703,7 +733,7 @@ it("preserves the first Zod issue code and message for each top-level field", as
     Reflect.apply(hook.result.current.field("choice").onChange, undefined, [false]);
   });
   await act(async () => {
-    await hook.result.current.submit();
+    await hook.result.current.actions.submit.run();
   });
   expect(hook.result.current.fieldErrors.detail).toEqual({
     code: "custom",
@@ -736,22 +766,22 @@ it("locks the validated resend recipient after a schema transforms its email", a
     { wrapper: f.wrapper },
   );
   await waitFor(() => expect(outgoing.result.current.data).toHaveLength(1));
-  let cancelling!: Promise<InvitationOutcome<unknown>>;
+  let cancelling!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    cancelling = outgoing.result.current.cancel("invite");
+    cancelling = outgoing.result.current.invitation("invite").cancel.run();
   });
   await waitFor(() => expect(f.writes).toHaveLength(1));
-  let resending!: Promise<InvitationOutcome<unknown>>;
+  let resending!: Promise<WorkflowOutcome<unknown>>;
   let settled = false;
   act(() => {
-    resending = form.result.current.submit().then((result) => {
+    resending = form.result.current.actions.submit.run().then((result) => {
       settled = true;
       return result;
     });
   });
   await waitFor(() => expect(settled || f.writes.length > 1).toBe(true));
   const writesBeforeCompletion = f.writes.length;
-  let outcome: InvitationOutcome<unknown> | undefined;
+  let outcome: WorkflowOutcome<unknown> | undefined;
   await act(async () => {
     hold.resolve({ id: "invite" });
     outcome = await resending;
@@ -759,11 +789,11 @@ it("locks the validated resend recipient after a schema transforms its email", a
   });
   expect(writesBeforeCompletion).toBe(1);
   expect(outcome).toEqual({ status: "ignored", reason: "busy" });
-  expect(form.result.current.isBusy).toBe(false);
-  expect(form.result.current.error).toBeNull();
+  expect(form.result.current.diagnostics.pendingAction !== null).toBe(false);
+  expect(form.result.current.diagnostics.error).toBeNull();
   expect(form.result.current.values.email).toBe("draft-alias");
   await act(async () => {
-    expect(await form.result.current.submit()).toMatchObject({ status: "success" });
+    expect(await form.result.current.actions.submit.run()).toMatchObject({ status: "success" });
   });
   expect(f.writes).toHaveLength(2);
   expect(f.writes[1]?.body.email).toBe("recipient@example.com");
@@ -824,13 +854,16 @@ it("locks before async submission validation and preserves validator failures", 
       }),
     { wrapper: f.wrapper },
   );
-  let pending!: Promise<InvitationOutcome<unknown>>;
+  let pending!: Promise<WorkflowOutcome<unknown>>;
   act(() => {
-    pending = hook.result.current.submit();
+    pending = hook.result.current.actions.submit.run();
   });
   await waitFor(() => expect(validate).toHaveBeenCalledTimes(1));
   await act(async () => {
-    expect(await hook.result.current.submit()).toEqual({ status: "ignored", reason: "busy" });
+    expect(await hook.result.current.actions.submit.run()).toEqual({
+      status: "ignored",
+      reason: "busy",
+    });
   });
   act(() => hook.result.current.field("email").onChange("blocked@example.com"));
   expect(hook.result.current.values.email).toBe("recipient@example.com");
@@ -847,32 +880,44 @@ it("locks before async submission validation and preserves validator failures", 
 
 it("recovers multiple accepted invitations independently without blocking unrelated responses", async () => {
   const f = fixture();
+  f.invitations.splice(
+    0,
+    1,
+    ...["first", "second", "unrelated"].map((id) => ({ ...f.invitations[0]!, id })),
+  );
   const onAccepted = vi.fn();
   const hook = renderHook(() => f.authData.useReceivedInvitations({ onAccepted }), {
     wrapper: f.wrapper,
   });
+  await waitFor(() => expect(hook.result.current.data).toHaveLength(3));
   f.failDirectory(true);
   await act(async () => {
-    await hook.result.current.accept("first");
-    await hook.result.current.accept("second");
-    expect(await hook.result.current.reject("unrelated")).toMatchObject({ status: "success" });
+    await hook.result.current.invitation("first").accept.run();
+    await hook.result.current.invitation("second").accept.run();
+    expect(await hook.result.current.invitation("unrelated").reject.run()).toMatchObject({
+      status: "success",
+    });
   });
-  expect(hook.result.current.pendingSync.map((entry) => entry.invitationId)).toEqual([
+  expect(hook.result.current.feedback.map((entry) => entry.target.invitationId)).toEqual([
     "first",
     "second",
   ]);
   act(() => hook.result.current.reset());
-  expect(hook.result.current.pendingSync).toHaveLength(2);
+  expect(hook.result.current.feedback).toHaveLength(2);
   f.failDirectory(false);
   await act(async () => {
-    expect(await hook.result.current.retrySync("first")).toMatchObject({ status: "success" });
+    expect(await hook.result.current.feedback[0]!.recovery!.run()).toMatchObject({
+      status: "success",
+    });
   });
-  expect(hook.result.current.pendingSync.map((entry) => entry.invitationId)).toEqual(["second"]);
+  expect(hook.result.current.feedback.map((entry) => entry.target.invitationId)).toEqual([
+    "second",
+  ]);
   expect(f.writes).toHaveLength(3);
   await act(async () => {
-    await hook.result.current.retrySync("second");
+    await hook.result.current.feedback[0]!.recovery!.run();
   });
   expect(onAccepted).toHaveBeenCalledTimes(2);
-  expect(hook.result.current.pendingSync).toHaveLength(0);
+  expect(hook.result.current.feedback).toHaveLength(0);
   expect(f.writes).toHaveLength(3);
 });

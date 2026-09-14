@@ -17,8 +17,10 @@ src/
     resource-dependencies.ts       Endpoint-to-signal dependency discovery
   workflows/
     shared/
-      action.ts                    Operation ownership, conflicts and phased outcomes
+      action.ts                    Action readiness, guarded completion and feedback
+      locks.ts                     Observable runtime-local operation conflicts
       form.ts                      RHF validation, defaults and value-only bindings
+      root.tsx                     Typed root/context binding; no workflow state of its own
       types.ts                     Common action, policy and form contracts
     invitations/
       workflows.tsx                Invitation reads, actions and acceptance recovery
@@ -44,7 +46,8 @@ Domain folders supply context, so their implementation and type files do not rep
 - `useCommittedRef` retains the latest committed configuration for asynchronous work. Render-time options must not escape through an abandoned render.
 - `useOrganizationRecovery` owns only the minimal successful-write receipt. Canonical organizations remain in the existing query cache.
 - `useOrganizationResource` resolves explicit scope and observes organization/role reads. It does not select the session's active organization.
-- `FormFieldIssue`, `FormValidationIssue`, and `FormFieldErrors` describe shared form feedback. Existing invitation-prefixed names are compatible aliases.
+- `FormFieldIssue`, `FormValidationIssue`, and `FormFieldErrors` describe shared form feedback. Schema definitions preserve input/output inference across root and context consumers.
+- Action handles and bound recovery feedback are the ordinary control contract. Diagnostic phases are for troubleshooting, not consumer sequencing. Recovery receipts remain internal to their domain.
 
 Keep public names stable unless a consumer contract is intentionally revised. Internal filenames are not package exports. Do not import backend modules from frontend implementation, or React modules from backend helpers.
 

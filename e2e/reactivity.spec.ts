@@ -98,12 +98,14 @@ test("failed deletion and failed completion refresh do not navigate or repeat th
     },
   );
   await page.getByRole("button", { name: "Delete organization", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "write:" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Forbidden" })).toBeVisible();
   expect(new URL(page.url()).searchParams.get("organizationId")).toBe(selectedId);
   denyWrite = false;
   failRefresh = true;
   await page.getByRole("button", { name: "Delete organization", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "synchronization:" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Retry organization refresh", exact: true }),
+  ).toBeVisible();
   expect(new URL(page.url()).searchParams.get("organizationId")).toBe(selectedId);
   expect(deleteRequests).toBe(2);
   failRefresh = false;
@@ -493,9 +495,7 @@ test("organization workflows preserve drafts, paginate members, and prepare dele
         deletions++;
     });
     await a!.getByRole("button", { name: "Delete organization", exact: true }).click();
-    await expect(
-      a!.getByText("preparation: Example cleanup failed", { exact: true }),
-    ).toBeVisible();
+    await expect(a!.getByText("Example cleanup failed", { exact: true })).toBeVisible();
     expect(deletions).toBe(0);
     await a!.getByRole("button", { name: "Allow deletion preparation", exact: true }).click();
     await a!.getByRole("button", { name: "Delete organization", exact: true }).click();
