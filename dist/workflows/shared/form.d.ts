@@ -2,8 +2,9 @@ import { type ZodType } from "zod";
 import { type useWorkflowAction, type ActionExecution } from "./action.js";
 import type { FormFieldErrors, FormFieldIssue } from "./types.js";
 import type { WorkflowOperation } from "./types.js";
+import type { WorkflowDisabledReason, WorkflowFeedbackOptions } from "./types.js";
 type Values = Record<string, unknown>;
-export type FormOptions = {
+export type FormOptions = WorkflowFeedbackOptions & {
     initialValues: Values;
     schema?: ZodType<Values, Values>;
     enabled?: boolean;
@@ -18,9 +19,19 @@ type Execution = {
     resetToDraft?: boolean;
     syncDefaults?: boolean;
     blocked?: boolean;
+    disabledReason?: WorkflowDisabledReason | null;
 };
 /** RHF is the only owner of editable values and field feedback. */
 export declare function useWorkflowForm(options: FormOptions, action: ReturnType<typeof useWorkflowAction>, execution: Execution): {
+    actions: {
+        submit: {
+            run: () => Promise<import("./types.js").WorkflowOutcome<unknown>>;
+            isDisabled: boolean;
+            isPending: boolean;
+            disabledReason: WorkflowDisabledReason | null;
+        };
+    };
+    feedback: import("./types.js").WorkflowFeedback[];
     values: Values;
     hasServerChanges: boolean;
     touched: {
@@ -35,17 +46,18 @@ export declare function useWorkflowForm(options: FormOptions, action: ReturnType
     isDirty: boolean;
     isValidating: boolean;
     field: (name: string) => {
+        name: string;
         value: unknown;
         error: FormFieldIssue | undefined;
         isDisabled: boolean;
         onChange(value: unknown): void;
         onBlur(): void;
     };
-    submit: () => Promise<import("./types.js").WorkflowOutcome<unknown>>;
     reset: () => void;
-    isBusy: boolean;
-    pendingAction: import("./types.js").WorkflowPendingAction | null;
-    error: import("./types.js").WorkflowError | null;
+    diagnostics: {
+        pendingAction: import("./types.js").WorkflowPendingAction | null;
+        error: import("./types.js").WorkflowError | null;
+    };
 };
 export {};
 //# sourceMappingURL=form.d.ts.map

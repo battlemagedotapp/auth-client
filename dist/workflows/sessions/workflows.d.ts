@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
 import type { CacheRuntime } from "../../cache/query-cache.js";
 import type { Result } from "../../client/types.js";
+import type { WorkflowFeedbackOptions } from "../shared/types.js";
 type Operation = "revokeSession" | "revokeOtherSessions" | "revokeSessions";
 export type SessionReads = {
     useListSessions(query?: undefined, options?: {
@@ -12,7 +12,7 @@ export type SessionReads = {
     throw: true;
     retry: 0;
 }) => Promise<unknown>>;
-type Options = {
+type Options = WorkflowFeedbackOptions & {
     enabled?: boolean;
     onRevoked?: (result: {
         operation: Operation;
@@ -22,17 +22,38 @@ type Options = {
 };
 export declare function createSessionWorkflows(client: SessionReads, runtime: CacheRuntime): {
     useSessions: (options?: Options) => {
+        session: (sessionId: string) => {
+            revoke: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+        };
+        actions: {
+            revokeOthers: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+            revokeAll: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+        };
         currentSession: {
             id: string;
         } | undefined;
         currentSessionId: string | undefined;
         needsFreshSession: boolean;
-        revokeSession: (sessionId: string) => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-        revokeOtherSessions: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-        revokeSessions: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-        isBusy: boolean;
-        pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
-        error: import("../shared/types.js").WorkflowError | null;
+        feedback: import("../shared/types.js").WorkflowFeedback[];
+        diagnostics: {
+            pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
+            error: import("../shared/types.js").WorkflowError | null;
+        };
         reset: () => void;
         queryError: unknown;
         data: unknown;
@@ -40,27 +61,56 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
-    Sessions: ({ children, ...options }: Options & {
-        children: (state: ReturnType<(options?: Options) => {
-            currentSession: {
-                id: string;
-            } | undefined;
-            currentSessionId: string | undefined;
-            needsFreshSession: boolean;
-            revokeSession: (sessionId: string) => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-            revokeOtherSessions: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-            revokeSessions: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
-            isBusy: boolean;
+    Sessions: (props: WorkflowFeedbackOptions & {
+        enabled?: boolean;
+        onRevoked?: (result: {
+            operation: Operation;
+            sessionId?: string;
+            result: unknown;
+        }) => void | Promise<void>;
+    } & {
+        children?: import("react").ReactNode;
+    }) => import("react").ReactNode;
+    useSessionsContext: () => {
+        session: (sessionId: string) => {
+            revoke: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+        };
+        actions: {
+            revokeOthers: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+            revokeAll: {
+                run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+                isDisabled: boolean;
+                isPending: boolean;
+                disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+            };
+        };
+        currentSession: {
+            id: string;
+        } | undefined;
+        currentSessionId: string | undefined;
+        needsFreshSession: boolean;
+        feedback: import("../shared/types.js").WorkflowFeedback[];
+        diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: import("../shared/types.js").WorkflowError | null;
-            reset: () => void;
-            queryError: unknown;
-            data: unknown;
-            isPending: boolean;
-            isFetching: boolean;
-            refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
-        }>) => ReactNode;
-    }) => ReactNode;
+        };
+        reset: () => void;
+        queryError: unknown;
+        data: unknown;
+        isPending: boolean;
+        isFetching: boolean;
+        refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
+    };
 };
 export {};
 //# sourceMappingURL=workflows.d.ts.map

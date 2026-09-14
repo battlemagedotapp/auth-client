@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import type { Data, Result, SessionClient, SessionsClient } from "../../client/types.js";
-import type { WorkflowActionState, WorkflowOutcome } from "../shared/types.js";
+import type { WorkflowActionState, WorkflowAction, WorkflowFeedbackOptions } from "../shared/types.js";
 type Callback<T> = (value: T) => void | Promise<void>;
-type Component<P, S> = (props: P & {
-    children: (state: S) => ReactNode;
+type Component<P, _State> = (props: P & {
+    children?: ReactNode;
 }) => ReactNode;
 type Read<T> = Omit<Result<T>, "error"> & {
     queryError: unknown;
 };
-export type SessionsOptions<C extends SessionsClient> = {
+export type SessionsOptions<C extends SessionsClient> = WorkflowFeedbackOptions & {
     enabled?: boolean;
     onRevoked?: Callback<{
         operation: "revokeSession" | "revokeOtherSessions" | "revokeSessions";
@@ -17,14 +17,19 @@ export type SessionsOptions<C extends SessionsClient> = {
     }>;
 };
 export type SessionsState<C extends SessionsClient & SessionClient> = Read<Data<C["listSessions"]>> & WorkflowActionState & {
+    session(sessionId: string): {
+        revoke: WorkflowAction<[], Data<C["revokeSession"]>>;
+    };
+    actions: {
+        revokeOthers: WorkflowAction<[], Data<C["revokeOtherSessions"]>>;
+        revokeAll: WorkflowAction<[], Data<C["revokeSessions"]>>;
+    };
     currentSession: NonNullable<ReturnType<C["useSession"]>["data"]>["session"] | undefined;
     currentSessionId: string | undefined;
     needsFreshSession: boolean;
-    revokeSession(this: void, sessionId: string): Promise<WorkflowOutcome<Data<C["revokeSession"]>>>;
-    revokeOtherSessions(this: void): Promise<WorkflowOutcome<Data<C["revokeOtherSessions"]>>>;
-    revokeSessions(this: void): Promise<WorkflowOutcome<Data<C["revokeSessions"]>>>;
 };
 export type SessionWorkflows<C extends SessionsClient & SessionClient> = {
+    useSessionsContext(): SessionsState<C>;
     useSessions(this: void, options?: SessionsOptions<C>): SessionsState<C>;
     Sessions: Component<SessionsOptions<C>, SessionsState<C>>;
 };

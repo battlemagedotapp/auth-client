@@ -19,8 +19,7 @@ export function useInvitationFormState(options, action, write, invitationId) {
         minimum,
         write: (values, transaction) => transaction.write(() => write(values), latestTarget.current(values)),
         complete: async (result, transaction) => {
-            transaction.phase("callback");
-            await options.onInvited?.(result);
+            await transaction.complete(() => options.onInvited?.(result));
             return result;
         },
     });

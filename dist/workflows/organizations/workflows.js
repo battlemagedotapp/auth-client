@@ -3,7 +3,8 @@ import { hashKey } from "@tanstack/react-query";
 import { looseObject, string } from "zod";
 import { useClientBoundary } from "../../client/provider-context.js";
 import { useWorkflowForm } from "../shared/form.js";
-import { allowed, getActionState, denied, enforcePolicy, ignored, asRecord, requireAvailable, asRecords, useWorkflowAction, useCommittedRef, } from "../shared/action.js";
+import { allowed, getActionState, denied, enforcePolicy, ignored, asRecord, requireAvailable, asRecords, useWorkflowAction, useCommittedRef, policyReason, } from "../shared/action.js";
+import { defineWorkflow } from "../shared/root.js";
 const writeOptions = { throw: true, retry: 0 };
 const required = string().refine((value) => !!value.trim(), "Required");
 const createMinimum = looseObject({ name: required, slug: required });
@@ -105,12 +106,30 @@ function useOrganizationRecovery(action, directory, detail, callback) {
             ...(organization ? { organization } : {}),
         };
         publish(null);
-        transaction.phase("callback");
-        await latest.current.callback(result);
+        await transaction.complete(() => latest.current.callback(result));
         return result;
     }
     return {
         pendingSync: action.available && visible.owner === action.owner ? visible.value : null,
+        feedback: () => action.feedback(action.available && visible.owner === action.owner && visible.value
+            ? [
+                {
+                    target: {
+                        operation: visible.value.operation,
+                        organizationId: visible.value.organizationId,
+                    },
+                    error: visible.value.error?.cause,
+                    diagnostics: visible.value.error,
+                    recovery: {
+                        ...action.control({
+                            operation: visible.value.operation,
+                            organizationId: visible.value.organizationId,
+                        }),
+                        run: retrySync,
+                    },
+                },
+            ]
+            : []),
         blocked: () => action.current() && receipt.current !== null,
         finish: (operation, organizationId, transaction) => {
             if (!transaction.current())
@@ -119,18 +138,19 @@ function useOrganizationRecovery(action, directory, detail, callback) {
             publish(value);
             return complete(value, transaction);
         },
-        retrySync: () => {
-            const value = action.current() ? receipt.current : null;
-            return value
-                ? action.run({ operation: value.operation, organizationId: value.organizationId }, (transaction) => complete(value, transaction), true)
-                : Promise.resolve(ignored("unavailable"));
-        },
+        retrySync,
     };
+    function retrySync() {
+        const value = action.current() ? receipt.current : null;
+        return value
+            ? action.run({ operation: value.operation, organizationId: value.organizationId }, (transaction) => complete(value, transaction), true)
+            : Promise.resolve(ignored("unavailable"));
+    }
 }
 export function createOrganizationWorkflows(client, runtime) {
     function useOrganizationDirectory(options = {}) {
         const query = client.useListOrganizations(undefined, { enabled: options.enabled });
-        const action = useWorkflowAction(runtime, "directory", options.enabled);
+        const action = useWorkflowAction(runtime, "directory", options.enabled, options);
         const latest = useCommittedRef({ query, options });
         const list = asRecords(query.data);
         const organization = options.selection
@@ -151,22 +171,27 @@ export function createOrganizationWorkflows(client, runtime) {
                         : organization
                             ? "ready"
                             : "unselected";
+        function selectOrganization(id) {
+            return action.run({ operation: "select" }, async (transaction) => {
+                const selected = asRecords(latest.current.query.data).find((row) => row.id === id);
+                requireAvailable(selected);
+                await transaction.complete(() => latest.current.options.onSelect?.(selected));
+                return selected;
+            });
+        }
         return {
             ...readState(query),
             ...getActionState(action),
             organization,
             status,
-            selectOrganization: (id) => action.run({ operation: "select" }, async (transaction) => {
-                const selected = asRecords(latest.current.query.data).find((row) => row.id === id);
-                requireAvailable(selected);
-                transaction.phase("callback");
-                await latest.current.options.onSelect?.(selected);
-                return selected;
+            select: (id) => ({
+                ...action.control({ operation: "select" }, list.some((row) => row.id === id) ? null : { code: "unavailable" }),
+                run: () => selectOrganization(id),
             }),
         };
     }
     function useOrganizationCreateForm(options) {
-        const action = useWorkflowAction(runtime, "organization-create", options.enabled);
+        const action = useWorkflowAction(runtime, "organization-create", options.enabled, options);
         const directory = client.useListOrganizations(undefined, { enabled: options.enabled });
         const recovery = useOrganizationRecovery(action, directory, undefined, async (result) => {
             await options.onCreated?.(result);
@@ -175,6 +200,7 @@ export function createOrganizationWorkflows(client, runtime) {
             operation: "create",
             minimum: createMinimum,
             blocked: !!recovery.pendingSync,
+            disabledReason: recovery.pendingSync ? { code: "recovery" } : null,
             write: (values, transaction) => {
                 requireAvailable(!recovery.blocked());
                 return transaction.write(() => client.organization.create({
@@ -192,8 +218,7 @@ export function createOrganizationWorkflows(client, runtime) {
         });
         return {
             ...form,
-            pendingSync: recovery.pendingSync,
-            retrySync: recovery.retrySync,
+            feedback: recovery.feedback(),
             isPending: directory.isPending,
             isFetching: directory.isFetching,
             queryError: directory.error,
@@ -202,7 +227,7 @@ export function createOrganizationWorkflows(client, runtime) {
     }
     function useOrganizationSettings(options) {
         const resource = useOrganizationResource(client, options, runtime);
-        const action = useWorkflowAction(runtime, `settings:${getOrganizationScopeKey(options)}`, resource.enabled);
+        const action = useWorkflowAction(runtime, `settings:${getOrganizationScopeKey(options)}`, resource.enabled, options);
         const directory = client.useListOrganizations(undefined, { enabled: resource.enabled });
         const latest = useCommittedRef({ options, resource });
         const recovery = useOrganizationRecovery(action, directory, resource.query, async (result) => {
@@ -244,14 +269,19 @@ export function createOrganizationWorkflows(client, runtime) {
             return organizationId;
         }
         const organization = resource.organization;
+        const organizationId = typeof organization?.id === "string" ? organization.id : undefined;
+        const readiness = (operation) => recovery.pendingSync ? { code: "recovery" } : policyReason(decision(operation));
+        const control = (operation) => action.control({ operation, organizationId }, readiness(operation));
+        const updateDisabledReason = readiness("update");
         const initialValues = organization ? options.getInitialValues(organization) : {};
         const form = useWorkflowForm({ ...options, initialValues }, action, {
             operation: "update",
-            organizationId: typeof organization?.id === "string" ? organization.id : undefined,
+            organizationId,
             minimum: updateMinimum,
             resetToDraft: true,
             syncDefaults: true,
-            blocked: !!recovery.pendingSync || !organization,
+            blocked: updateDisabledReason !== null,
+            disabledReason: updateDisabledReason,
             write: (values, transaction) => write("update", values, transaction),
             complete: (id, transaction) => {
                 if (typeof id !== "string")
@@ -270,23 +300,28 @@ export function createOrganizationWorkflows(client, runtime) {
         }
         return {
             ...getActionState(action),
+            feedback: recovery.feedback(),
+            actions: {
+                update: {
+                    ...control("update"),
+                    run: (data) => perform("update", data),
+                },
+                leave: {
+                    ...control("leave"),
+                    run: () => perform("leave"),
+                },
+                delete: {
+                    ...control("delete"),
+                    run: () => perform("delete"),
+                },
+            },
             organization,
             role: resource.role,
             form: organization && action.available ? form : null,
             hasServerChanges: !!organization && form.hasServerChanges,
-            availability: {
-                update: decision("update"),
-                leave: decision("leave"),
-                delete: decision("delete"),
-            },
             isPending: resource.query.isPending || resource.memberRole.isPending,
             isFetching: resource.query.isFetching || resource.memberRole.isFetching,
             queryError: resource.query.error ?? resource.memberRole.error,
-            pendingSync: recovery.pendingSync,
-            retrySync: recovery.retrySync,
-            update: (data) => perform("update", data),
-            leave: () => perform("leave"),
-            delete: () => perform("delete"),
             refetch: async () => {
                 await Promise.all([
                     resource.query.refetch(),
@@ -318,7 +353,7 @@ export function createOrganizationWorkflows(client, runtime) {
         const outOfBounds = query.data !== undefined && page > finalPage;
         if (outOfBounds)
             setPagination({ key, page: finalPage });
-        const action = useWorkflowAction(runtime, `members:${getOrganizationScopeKey(options)}`, resource.enabled);
+        const action = useWorkflowAction(runtime, `members:${getOrganizationScopeKey(options)}`, resource.enabled, options);
         const members = outOfBounds
             ? []
             : asRecords(asRecord(query.data)?.members).slice(page * options.pageSize, (page + 1) * options.pageSize);
@@ -367,8 +402,9 @@ export function createOrganizationWorkflows(client, runtime) {
                     : { organizationId: id, memberId, role }, writeOptions));
                 if (!transaction.current())
                     throw new Error("Obsolete member action");
-                transaction.phase("callback");
-                await (operation === "removeMember" ? current.options.onRemoved : current.options.onRoleUpdated)?.({ memberId, result });
+                await transaction.complete(() => (operation === "removeMember"
+                    ? current.options.onRemoved
+                    : current.options.onRoleUpdated)?.({ memberId, result }));
                 return result;
             });
         }
@@ -379,9 +415,10 @@ export function createOrganizationWorkflows(client, runtime) {
                 setPagination({ key, page: query.data === undefined ? page : Math.min(next, finalPage) });
         }
         return {
-            ...readState(query),
             ...getActionState(action),
-            data: outOfBounds ? undefined : query.data,
+            refetch: async () => {
+                await query.refetch();
+            },
             organization: resource.organization,
             role: resource.role,
             members,
@@ -396,20 +433,45 @@ export function createOrganizationWorkflows(client, runtime) {
             setPage,
             nextPage: () => setPage(page + 1),
             previousPage: () => setPage(Math.max(0, page - 1)),
-            availability,
-            updateMemberRole: ({ memberId, role }) => perform("updateMemberRole", memberId, role),
-            removeMember: ({ memberId }) => perform("removeMember", memberId),
+            member: (memberId) => {
+                const decisions = availability(memberId);
+                const target = {
+                    organizationId: typeof organizationId === "string" ? organizationId : undefined,
+                    memberId,
+                };
+                return {
+                    assignableRoles: decisions.assignableRoles,
+                    remove: {
+                        ...action.control({ ...target, operation: "removeMember" }, policyReason(decisions.remove)),
+                        run: () => perform("removeMember", memberId),
+                    },
+                    updateRole: (role) => ({
+                        ...action.control({ ...target, operation: "updateMemberRole" }, policyReason(availability(memberId, role).updateRole)),
+                        run: () => perform("updateMemberRole", memberId, role),
+                    }),
+                };
+            },
         };
     }
+    const directory = defineWorkflow(useOrganizationDirectory);
+    const creation = defineWorkflow(useOrganizationCreateForm);
+    const settings = defineWorkflow(useOrganizationSettings);
+    const members = defineWorkflow(useOrganizationMembers);
     return {
         useOrganizationDirectory,
         useOrganizationCreateForm,
         useOrganizationSettings,
         useOrganizationMembers,
-        OrganizationDirectory: ({ children, ...options }) => children(useOrganizationDirectory(options)),
-        OrganizationCreateForm: ({ children, ...options }) => children(useOrganizationCreateForm(options)),
-        OrganizationSettings: ({ children, ...options }) => children(useOrganizationSettings(options)),
-        OrganizationMembers: ({ children, ...options }) => children(useOrganizationMembers(options)),
+        defineOrganizationCreateForm: (schema) => defineWorkflow((options) => useOrganizationCreateForm({ ...options, schema: options.schema ?? schema })),
+        defineOrganizationSettings: (schema) => defineWorkflow((options) => useOrganizationSettings({ ...options, schema: options.schema ?? schema })),
+        OrganizationDirectory: directory.Root,
+        useOrganizationDirectoryContext: directory.useWorkflowContext,
+        OrganizationCreateForm: creation.Root,
+        useOrganizationCreateFormContext: creation.useWorkflowContext,
+        OrganizationSettings: settings.Root,
+        useOrganizationSettingsContext: settings.useWorkflowContext,
+        OrganizationMembers: members.Root,
+        useOrganizationMembersContext: members.useWorkflowContext,
     };
 }
 //# sourceMappingURL=workflows.js.map

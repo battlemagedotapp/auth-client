@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import type { Data, OrganizationClient, Query, Result } from "../../client/types.js";
-import type { WorkflowError, WorkflowOutcome, WorkflowActionState, WorkflowForm, PolicyDecision, FormFieldErrors } from "../shared/types.js";
+import type { WorkflowDefinition } from "../shared/root.js";
+import type { WorkflowActionState, WorkflowForm, PolicyDecision, FormFieldErrors, WorkflowAction, WorkflowFeedbackOptions } from "../shared/types.js";
 export type OrganizationScope = {
     organizationId: string;
     organizationSlug?: never;
@@ -10,8 +11,8 @@ export type OrganizationScope = {
     organizationId?: never;
 };
 type Callback<T> = (value: T) => void | Promise<void>;
-type Component<P, S> = (props: P & {
-    children: (state: S) => ReactNode;
+type Component<P, _State> = (props: P & {
+    children?: ReactNode;
 }) => ReactNode;
 type Read<T> = Omit<Result<T>, "error"> & {
     queryError: unknown;
@@ -26,11 +27,6 @@ export type OrganizationCompletion<C extends OrganizationClient, O extends "crea
         organization: DirectoryOrganization<C>;
     } : {});
 }[O];
-export type OrganizationSync = Readonly<{
-    operation: "create" | "update" | "leave" | "delete";
-    organizationId: string;
-    error: WorkflowError | null;
-}>;
 export type OrganizationCreateValues<C extends OrganizationClient> = Omit<NonNullable<Parameters<C["organization"]["create"]>[0]>, "fetchOptions" | "userId" | "keepCurrentActiveOrganization" | "teamId">;
 export type OrganizationUpdateValues<C extends OrganizationClient> = NonNullable<NonNullable<Parameters<C["organization"]["update"]>[0]>["data"]>;
 type OptionalUndefined<T> = {
@@ -38,7 +34,7 @@ type OptionalUndefined<T> = {
 };
 type Schema<V> = z.ZodType<OptionalUndefined<V>, Record<string, unknown>>;
 type Boundary<S extends z.ZodType> = Extract<keyof z.input<S> | keyof z.output<S>, "fetchOptions" | "organizationId" | "userId" | "teamId" | "keepCurrentActiveOrganization"> extends never ? unknown : never;
-type FormOptions<V> = {
+type FormOptions<V> = WorkflowFeedbackOptions & {
     enabled?: boolean;
     validate?: (values: Readonly<V>) => FormFieldErrors<V> | Promise<FormFieldErrors<V>>;
 };
@@ -49,8 +45,6 @@ export type OrganizationCreateOptions<C extends OrganizationClient> = FormOption
     onCreated?: Callback<OrganizationCompletion<C, "create">>;
 };
 export type OrganizationCreateState<C extends OrganizationClient, V = OrganizationCreateValues<C>> = WorkflowForm<V, OrganizationCompletion<C, "create">> & {
-    pendingSync: OrganizationSync | null;
-    retrySync(this: void): Promise<WorkflowOutcome<OrganizationCompletion<C, "create">>>;
     isPending: boolean;
     isFetching: boolean;
     queryError: unknown;
@@ -64,14 +58,9 @@ export interface OrganizationCreateHook<C extends OrganizationClient> {
     (options: OrganizationCreateOptions<C>): OrganizationCreateState<C>;
     <S extends Schema<OrganizationCreateValues<C>>>(options: CreateSchemaOptions<C, S>): OrganizationCreateState<C, z.input<S>>;
 }
-export interface OrganizationCreateComponent<C extends OrganizationClient> {
-    (props: OrganizationCreateOptions<C> & {
-        children: (state: OrganizationCreateState<C>) => ReactNode;
-    }): ReactNode;
-    <S extends Schema<OrganizationCreateValues<C>>>(props: CreateSchemaOptions<C, S> & {
-        children: (state: OrganizationCreateState<C, z.input<S>>) => ReactNode;
-    }): ReactNode;
-}
+export type OrganizationCreateComponent<C extends OrganizationClient> = (props: OrganizationCreateOptions<C> & {
+    children?: ReactNode;
+}) => ReactNode;
 export type OrganizationPolicyContext<C extends OrganizationClient> = {
     organization: FullOrganization<C>;
     actorId: string;
@@ -98,6 +87,13 @@ export type OrganizationSettingsOptions<C extends OrganizationClient> = Organiza
     }>;
 };
 export type OrganizationSettingsState<C extends OrganizationClient, V = OrganizationUpdateValues<C>> = WorkflowActionState & {
+    actions: {
+        update: WorkflowAction<[
+            data: OrganizationUpdateValues<C>
+        ], OrganizationCompletion<C, "update">>;
+        leave: WorkflowAction<[], OrganizationCompletion<C, "leave">>;
+        delete: WorkflowAction<[], OrganizationCompletion<C, "delete">>;
+    };
     organization: FullOrganization<C> | undefined;
     role: string | undefined;
     isPending: boolean;
@@ -105,12 +101,6 @@ export type OrganizationSettingsState<C extends OrganizationClient, V = Organiza
     queryError: unknown;
     form: WorkflowForm<V, OrganizationCompletion<C, "update">> | null;
     hasServerChanges: boolean;
-    availability: Record<"update" | "leave" | "delete", PolicyDecision>;
-    update(this: void, data: OrganizationUpdateValues<C>): Promise<WorkflowOutcome<OrganizationCompletion<C, "update">>>;
-    leave(this: void): Promise<WorkflowOutcome<OrganizationCompletion<C, "leave">>>;
-    delete(this: void): Promise<WorkflowOutcome<OrganizationCompletion<C, "delete">>>;
-    pendingSync: OrganizationSync | null;
-    retrySync(this: void): Promise<WorkflowOutcome<OrganizationCompletion<C>>>;
     refetch(this: void): Promise<void>;
 };
 type SettingsSchemaOptions<C extends OrganizationClient, S extends Schema<OrganizationUpdateValues<C>>> = Omit<OrganizationSettingsOptions<C>, "schema" | "getInitialValues"> & {
@@ -121,15 +111,10 @@ export interface OrganizationSettingsHook<C extends OrganizationClient> {
     (options: OrganizationSettingsOptions<C>): OrganizationSettingsState<C>;
     <S extends Schema<OrganizationUpdateValues<C>>>(options: SettingsSchemaOptions<C, S>): OrganizationSettingsState<C, z.input<S>>;
 }
-export interface OrganizationSettingsComponent<C extends OrganizationClient> {
-    (props: OrganizationSettingsOptions<C> & {
-        children: (state: OrganizationSettingsState<C>) => ReactNode;
-    }): ReactNode;
-    <S extends Schema<OrganizationUpdateValues<C>>>(props: SettingsSchemaOptions<C, S> & {
-        children: (state: OrganizationSettingsState<C, z.input<S>>) => ReactNode;
-    }): ReactNode;
-}
-export type OrganizationDirectoryOptions<C extends OrganizationClient> = {
+export type OrganizationSettingsComponent<C extends OrganizationClient> = (props: OrganizationSettingsOptions<C> & {
+    children?: ReactNode;
+}) => ReactNode;
+export type OrganizationDirectoryOptions<C extends OrganizationClient> = WorkflowFeedbackOptions & {
     enabled?: boolean;
     selection?: OrganizationScope;
     fallback?: "none" | "first";
@@ -138,7 +123,7 @@ export type OrganizationDirectoryOptions<C extends OrganizationClient> = {
 export type OrganizationDirectoryState<C extends OrganizationClient> = Read<Data<C["organization"]["list"]>> & WorkflowActionState & {
     organization: DirectoryOrganization<C> | null;
     status: "loading" | "error" | "empty" | "unselected" | "unavailable" | "ready";
-    selectOrganization(this: void, id: string): Promise<WorkflowOutcome<DirectoryOrganization<C>>>;
+    select(this: void, id: string): WorkflowAction<[], DirectoryOrganization<C>>;
 };
 export type OrganizationMember<C extends OrganizationClient> = NonNullable<Data<C["organization"]["listMembers"]>> extends {
     members: (infer M)[];
@@ -147,7 +132,7 @@ export type MemberRoleInput<C extends OrganizationClient> = NonNullable<Paramete
 export type MemberPolicyContext<C extends OrganizationClient> = OrganizationPolicyContext<C> & {
     member: OrganizationMember<C>;
 };
-export type OrganizationMembersOptions<C extends OrganizationClient> = OrganizationScope & {
+export type OrganizationMembersOptions<C extends OrganizationClient> = OrganizationScope & WorkflowFeedbackOptions & {
     enabled?: boolean;
     pageSize: number;
     query?: Omit<Query<C["organization"]["listMembers"]>, "organizationId" | "organizationSlug" | "limit" | "offset">;
@@ -167,10 +152,17 @@ export type OrganizationMembersOptions<C extends OrganizationClient> = Organizat
         result: Data<C["organization"]["removeMember"]>;
     }>;
 };
-export type OrganizationMembersState<C extends OrganizationClient> = Read<Data<C["organization"]["listMembers"]>> & WorkflowActionState & {
+export type OrganizationMembersState<C extends OrganizationClient> = Omit<Read<Data<C["organization"]["listMembers"]>>, "data" | "refetch"> & {
+    refetch(): Promise<void>;
+} & WorkflowActionState & {
     organization: FullOrganization<C> | undefined;
     role: string | undefined;
     members: readonly OrganizationMember<C>[];
+    member(this: void, memberId: string): {
+        assignableRoles: readonly MemberRoleInput<C>[] | undefined;
+        remove: WorkflowAction<[], Data<C["organization"]["removeMember"]>>;
+        updateRole(this: void, role: MemberRoleInput<C>): WorkflowAction<[], Data<C["organization"]["updateMemberRole"]>>;
+    };
     total: number;
     page: number;
     pageSize: number;
@@ -179,20 +171,18 @@ export type OrganizationMembersState<C extends OrganizationClient> = Read<Data<C
     setPage(this: void, page: number): void;
     nextPage(this: void): void;
     previousPage(this: void): void;
-    availability(this: void, memberId: string, nextRole?: MemberRoleInput<C>): {
-        remove: PolicyDecision;
-        updateRole: PolicyDecision;
-        assignableRoles: readonly MemberRoleInput<C>[] | undefined;
-    };
-    updateMemberRole(this: void, input: {
-        memberId: string;
-        role: MemberRoleInput<C>;
-    }): Promise<WorkflowOutcome<Data<C["organization"]["updateMemberRole"]>>>;
-    removeMember(this: void, input: {
-        memberId: string;
-    }): Promise<WorkflowOutcome<Data<C["organization"]["removeMember"]>>>;
 };
 export type OrganizationWorkflows<C extends OrganizationClient> = {
+    useOrganizationDirectoryContext(): OrganizationDirectoryState<C>;
+    useOrganizationCreateFormContext(): OrganizationCreateState<C>;
+    useOrganizationSettingsContext(): OrganizationSettingsState<C>;
+    useOrganizationMembersContext(): OrganizationMembersState<C>;
+    defineOrganizationCreateForm<S extends Schema<OrganizationCreateValues<C>>>(schema: S & Boundary<S>): WorkflowDefinition<Omit<CreateSchemaOptions<C, S>, "schema"> & {
+        schema?: S & Boundary<S>;
+    }, OrganizationCreateState<C, z.input<S>>>;
+    defineOrganizationSettings<S extends Schema<OrganizationUpdateValues<C>>>(schema: S & Boundary<S>): WorkflowDefinition<Omit<SettingsSchemaOptions<C, S>, "schema"> & {
+        schema?: S & Boundary<S>;
+    }, OrganizationSettingsState<C, z.input<S>>>;
     useOrganizationDirectory(this: void, options?: OrganizationDirectoryOptions<C>): OrganizationDirectoryState<C>;
     OrganizationDirectory: Component<OrganizationDirectoryOptions<C>, OrganizationDirectoryState<C>>;
     useOrganizationCreateForm: OrganizationCreateHook<C>;

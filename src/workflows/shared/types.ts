@@ -7,6 +7,24 @@ export type WorkflowOutcome<T> =
   | { status: "success"; data: T }
   | { status: "error"; error: WorkflowError }
   | { status: "ignored"; reason: "disabled" | "busy" | "obsolete" | "unavailable" };
+export type WorkflowDisabledReason =
+  | { code: "disabled" | "busy" | "unavailable" | "recovery" }
+  | { code: "policy"; policyCode: string };
+export type WorkflowAction<Args extends unknown[] = [], Result = unknown> = {
+  run(this: void, ...args: Args): Promise<WorkflowOutcome<Result>>;
+  isDisabled: boolean;
+  isPending: boolean;
+  disabledReason: WorkflowDisabledReason | null;
+};
+export type WorkflowFeedback = {
+  target: WorkflowPendingAction;
+  error: unknown;
+  recovery: WorkflowAction | null;
+  diagnostics: WorkflowError | null;
+};
+export type WorkflowFeedbackOptions = {
+  onError?: (feedback: Omit<WorkflowFeedback, "recovery">) => void;
+};
 export type WorkflowOperation =
   | "select"
   | "create"
@@ -31,9 +49,11 @@ export type WorkflowPendingAction = {
   sessionId?: string;
 };
 export type WorkflowActionState = {
-  isBusy: boolean;
-  pendingAction: WorkflowPendingAction | null;
-  error: WorkflowError | null;
+  feedback: readonly WorkflowFeedback[];
+  diagnostics: {
+    pendingAction: WorkflowPendingAction | null;
+    error: WorkflowError | null;
+  };
   reset(this: void): void;
 };
 export type PolicyDecision = { allowed: true } | { allowed: false; code: string };
@@ -41,6 +61,7 @@ export type FormFieldIssue = { code: string; message?: string };
 export type FormValidationIssue = FormFieldIssue & { cause?: unknown };
 export type FormFieldErrors<V> = Partial<Record<keyof V, FormFieldIssue>>;
 export type WorkflowForm<V, R> = WorkflowActionState & {
+  actions: { submit: WorkflowAction<[], R> };
   values: Readonly<V>;
   touched: Readonly<Partial<Record<keyof V, boolean>>>;
   fieldErrors: Readonly<FormFieldErrors<V>>;
@@ -51,11 +72,11 @@ export type WorkflowForm<V, R> = WorkflowActionState & {
     this: void,
     name: K,
   ): {
+    name: K;
     value: V[K];
     onChange(this: void, value: V[K]): void;
     onBlur(this: void): void;
     error: { code: string; message?: string } | undefined;
     isDisabled: boolean;
   };
-  submit(this: void): Promise<WorkflowOutcome<R>>;
 };

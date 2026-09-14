@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { defineWorkflow } from "../shared/root.js";
 import type { CacheRuntime } from "../../cache/query-cache.js";
 import type { Result } from "../../client/types.js";
 import {
@@ -9,6 +9,7 @@ import {
   useWorkflowAction,
   useCommittedRef,
 } from "../shared/action.js";
+import type { WorkflowFeedbackOptions } from "../shared/types.js";
 type Operation = "revokeSession" | "revokeOtherSessions" | "revokeSessions";
 export type SessionReads = {
   useListSessions(query?: undefined, options?: { enabled?: boolean }): Result<unknown>;
@@ -16,7 +17,7 @@ export type SessionReads = {
   Operation,
   (body: { token?: string }, options: { throw: true; retry: 0 }) => Promise<unknown>
 >;
-type Options = {
+type Options = WorkflowFeedbackOptions & {
   enabled?: boolean;
   onRevoked?: (result: {
     operation: Operation;
@@ -32,10 +33,11 @@ export function createSessionWorkflows(client: SessionReads, runtime: CacheRunti
   function useSessions(options: Options = {}) {
     const query = client.useListSessions(undefined, { enabled: options.enabled });
     const session = runtime.auth.useSession();
-    const action = useWorkflowAction(runtime, "sessions", options.enabled);
+    const action = useWorkflowAction(runtime, "sessions", options.enabled, options);
     const latest = useCommittedRef({ query, options });
     function perform(operation: Operation, sessionId?: string) {
       return action.run({ operation, ...(sessionId ? { sessionId } : {}) }, async (transaction) => {
+        requireAvailable(latest.current.query.data !== undefined);
         const row = asRecords(latest.current.query.data).find((value) => value.id === sessionId);
         if (operation === "revokeSession") requireAvailable(row && typeof row.token === "string");
         const result = await transaction.write(() =>
@@ -45,12 +47,13 @@ export function createSessionWorkflows(client: SessionReads, runtime: CacheRunti
           }),
         );
         if (!transaction.current()) throw new Error("Obsolete session action");
-        transaction.phase("callback");
-        await latest.current.options.onRevoked?.({
-          operation,
-          ...(sessionId ? { sessionId } : {}),
-          result,
-        });
+        await transaction.complete(() =>
+          latest.current.options.onRevoked?.({
+            operation,
+            ...(sessionId ? { sessionId } : {}),
+            result,
+          }),
+        );
         return result;
       });
     }
@@ -59,22 +62,40 @@ export function createSessionWorkflows(client: SessionReads, runtime: CacheRunti
       ...read,
       queryError,
       ...getActionState(action),
+      session: (sessionId: string) => ({
+        revoke: {
+          ...action.control(
+            { operation: "revokeSession", sessionId },
+            asRecords(query.data).some((row) => row.id === sessionId)
+              ? null
+              : { code: "unavailable" },
+          ),
+          run: () => perform("revokeSession", sessionId),
+        },
+      }),
+      actions: {
+        revokeOthers: {
+          ...action.control(
+            { operation: "revokeOtherSessions" },
+            query.data === undefined ? { code: "unavailable" } : null,
+          ),
+          run: () => perform("revokeOtherSessions"),
+        },
+        revokeAll: {
+          ...action.control(
+            { operation: "revokeSessions" },
+            query.data === undefined ? { code: "unavailable" } : null,
+          ),
+          run: () => perform("revokeSessions"),
+        },
+      },
       currentSession: action.available ? session.data?.session : undefined,
       currentSessionId: action.available ? session.data?.session.id : undefined,
       needsFreshSession:
         errorCode(queryError) === "SESSION_NOT_FRESH" ||
         errorCode(action.error?.cause) === "SESSION_NOT_FRESH",
-      revokeSession: (sessionId: string) => perform("revokeSession", sessionId),
-      revokeOtherSessions: () => perform("revokeOtherSessions"),
-      revokeSessions: () => perform("revokeSessions"),
     };
   }
-  return {
-    useSessions,
-    Sessions: ({
-      children,
-      ...options
-    }: Options & { children: (state: ReturnType<typeof useSessions>) => ReactNode }) =>
-      children(useSessions(options)),
-  };
+  const sessions = defineWorkflow(useSessions);
+  return { useSessions, Sessions: sessions.Root, useSessionsContext: sessions.useWorkflowContext };
 }

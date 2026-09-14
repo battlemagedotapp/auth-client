@@ -3,6 +3,7 @@ export { AuthDataProvider } from "./client/provider.js";
 export type * from "./client/types.js";
 export type * from "./workflows/invitations/types.js";
 export type * from "./workflows/shared/types.js";
+export type { WorkflowDefinition } from "./workflows/shared/root.js";
 export type * from "./workflows/organizations/types.js";
 export type * from "./workflows/sessions/types.js";
 //# sourceMappingURL=index.d.ts.map

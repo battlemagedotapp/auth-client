@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { workflowLocks } from "./locks.js";
 import { useMutation } from "@tanstack/react-query";
 import { useClientBoundary } from "../../client/provider-context.js";
 export const asRecord = (value) => value !== null && typeof value === "object" ? value : undefined;
@@ -16,6 +17,7 @@ export function enforcePolicy(decision) {
 }
 export const allowed = { allowed: true };
 export const denied = (code) => ({ allowed: false, code });
+export const policyReason = (decision) => decision.allowed ? null : { code: "policy", policyCode: decision.code };
 export function useCommittedRef(value) {
     const ref = useRef(value);
     useLayoutEffect(() => {
@@ -25,22 +27,34 @@ export function useCommittedRef(value) {
 }
 export function getActionState(action) {
     return {
-        isBusy: action.isBusy,
-        pendingAction: action.pendingAction,
-        error: action.error,
+        feedback: action.feedback(),
+        diagnostics: { pendingAction: action.pendingAction, error: action.error },
         reset: action.reset,
     };
 }
-const locks = new WeakMap();
+// Recovery already presents its operation's error; don't render it a second time.
+function operationFeedback(state, recoveries) {
+    if (!state?.error || !state.target)
+        return recoveries;
+    const { target, error } = state;
+    const represented = recoveries.some((entry) => entry.target.operation === target.operation &&
+        entry.target.invitationId === target.invitationId &&
+        (target.invitationId !== undefined || entry.target.organizationId === target.organizationId));
+    return represented
+        ? recoveries
+        : [...recoveries, { target, error: error.cause, diagnostics: error, recovery: null }];
+}
 /** TanStack observes writes; this coordinator owns only locks and guarded continuations. */
-export function useWorkflowAction(runtime, scope, enabled = true) {
+export function useWorkflowAction(runtime, scope, enabled = true, options = {}) {
+    const callbacks = useCommittedRef(options);
+    const locks = workflowLocks(runtime);
+    useSyncExternalStore(locks.subscribe, locks.getSnapshot, locks.getSnapshot);
     const { identity, disposed } = useClientBoundary(runtime);
     const key = JSON.stringify([identity, scope, disposed]);
     const [boundary, setBoundary] = useState(() => ({ key, owner: Symbol() }));
-    const currentBoundary = boundary.key === key ? boundary : { key, owner: Symbol() };
     if (boundary.key !== key)
-        setBoundary(currentBoundary);
-    const { owner } = currentBoundary;
+        setBoundary({ key, owner: Symbol() });
+    const { owner } = boundary;
     const lifecycle = useRef({
         owner,
         active: false,
@@ -99,39 +113,9 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
         if (busy())
             return ignored("busy");
         const generation = runtime.generation;
-        let shared = locks.get(runtime);
-        if (!shared) {
-            shared = new Map();
-            locks.set(runtime, shared);
-        }
-        const token = Symbol();
-        const acquired = [];
-        function claim(target) {
-            const requested = [];
-            const add = (kind, id, exclusive = true) => requested.push({ key: JSON.stringify([generation, kind, id]), exclusive });
-            if (target.organizationId)
-                add("organization", target.organizationId, target.operation === "delete" || target.operation === "leave");
-            if (target.invitationId)
-                add("invitation", target.invitationId);
-            if (target.memberId)
-                add("member", `${target.organizationId}:${target.memberId}`);
-            if (target.operation.startsWith("revoke"))
-                add("sessions", identity.userId ?? "", target.operation !== "revokeSession");
-            if (target.sessionId)
-                add("session", target.sessionId);
-            for (const [holder, held] of shared)
-                if (holder !== token &&
-                    requested.some((request) => held.some((lock) => lock.key === request.key && (lock.exclusive || request.exclusive))))
-                    throw conflict;
-            acquired.push(...requested);
-            shared.set(token, acquired);
-        }
-        try {
-            claim(pending);
-        }
-        catch {
+        const lock = locks.acquire(pending, generation);
+        if (!lock)
             return ignored("busy");
-        }
         const lease = lifecycle.current;
         lease.busy = true;
         const controller = new AbortController();
@@ -140,6 +124,7 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
         setFeedback({ owner, pending, error: null });
         let phase = "write";
         let writeSucceeded = alreadyWritten;
+        let completionDelivered = false;
         const valid = () => current() &&
             lifecycle.current === lease &&
             lease.available &&
@@ -152,6 +137,13 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
                 phase: (next) => {
                     phase = next;
                 },
+                complete: async (callback) => {
+                    if (!valid())
+                        throw new Error("Obsolete workflow completion");
+                    phase = "callback";
+                    completionDelivered = true;
+                    await callback();
+                },
                 write: async (fn, target) => {
                     if (!valid())
                         throw new Error("Obsolete workflow");
@@ -160,7 +152,8 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
                             ...pending,
                             ...(typeof target === "string" ? { invitationId: target } : target),
                         };
-                        claim(pending);
+                        if (!lock.extend(pending))
+                            throw conflict;
                         setFeedback({ owner, pending, error: null });
                     }
                     const result = await mutateAsync(() => {
@@ -172,24 +165,26 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
                     return result;
                 },
             });
-            if (!valid())
+            if (!valid() && !completionDelivered)
                 return ignored("obsolete");
-            setFeedback({ owner, pending: null, error: null });
             return { status: "success", data };
         }
         catch (cause) {
-            if (!valid())
+            if (!valid() && !completionDelivered)
                 return ignored("obsolete");
             if (cause === conflict)
                 return ignored("busy");
             if (cause === unavailable)
                 return ignored("unavailable");
             const error = { phase, cause, writeSucceeded };
-            setFeedback({ owner, pending: null, error });
+            if (valid()) {
+                setFeedback({ owner, pending: null, error, target: pending });
+                callbacks.current.onError?.({ target: pending, error: cause, diagnostics: error });
+            }
             return { status: "error", error };
         }
         finally {
-            shared.delete(token);
+            lock.release();
             lease.controllers.delete(controller);
             if (current() && lifecycle.current === lease) {
                 lease.busy = false;
@@ -199,7 +194,22 @@ export function useWorkflowAction(runtime, scope, enabled = true) {
         }
     }
     const visible = available && feedback?.owner === owner ? feedback : undefined;
+    function control(target, reason = null) {
+        const disabledReason = !available
+            ? { code: "disabled" }
+            : visible?.pending != null || locks.conflicts(target, runtime.generation)
+                ? { code: "busy" }
+                : reason;
+        return {
+            isDisabled: disabledReason !== null,
+            isPending: visible?.pending != null &&
+                Object.entries(target).every(([key, value]) => visible.pending?.[key] === value),
+            disabledReason,
+        };
+    }
     return {
+        control,
+        feedback: (recoveries = []) => operationFeedback(visible, recoveries),
         owner,
         actorId: identity.userId,
         available,

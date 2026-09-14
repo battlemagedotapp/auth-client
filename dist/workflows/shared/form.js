@@ -198,6 +198,7 @@ export function useWorkflowForm(options, action, execution) {
         const key = encode(name);
         register(key);
         return {
+            name,
             value: values[name],
             error: fieldErrors[name],
             isDisabled: !action.available || action.isBusy || execution.blocked === true,
@@ -253,6 +254,16 @@ export function useWorkflowForm(options, action, execution) {
         });
     }
     return {
+        actions: {
+            submit: {
+                ...action.control({
+                    operation: execution.operation,
+                    ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
+                }, execution.disabledReason ?? (execution.blocked ? { code: "unavailable" } : null)),
+                run: submit,
+            },
+        },
+        feedback: action.feedback(),
         values,
         hasServerChanges,
         touched: Object.fromEntries(Object.entries(matches ? touchedFields : {})
@@ -263,11 +274,8 @@ export function useWorkflowForm(options, action, execution) {
         isDirty: matches && isDirty,
         isValidating: matches && isValidating,
         field,
-        submit,
         reset,
-        isBusy: action.isBusy,
-        pendingAction: action.pendingAction,
-        error: action.error,
+        diagnostics: { pendingAction: action.pendingAction, error: action.error },
     };
 }
 //# sourceMappingURL=form.js.map

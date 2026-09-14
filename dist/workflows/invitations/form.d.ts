@@ -6,6 +6,15 @@ export type FormOptions = BaseOptions & {
     onInvited?: (result: unknown) => void | Promise<void>;
 };
 export declare function useInvitationFormState(options: FormOptions, action: ReturnType<typeof useWorkflowAction>, write: (values: Values) => Promise<unknown>, invitationId: (values: Values) => string | undefined): {
+    actions: {
+        submit: {
+            run: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
+            isDisabled: boolean;
+            isPending: boolean;
+            disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
+        };
+    };
+    feedback: import("../shared/types.js").WorkflowFeedback[];
     values: {
         [x: string]: unknown;
     };
@@ -22,16 +31,17 @@ export declare function useInvitationFormState(options: FormOptions, action: Ret
     isDirty: boolean;
     isValidating: boolean;
     field: (name: string) => {
+        name: string;
         value: unknown;
         error: import("../shared/types.js").FormFieldIssue | undefined;
         isDisabled: boolean;
         onChange(value: unknown): void;
         onBlur(): void;
     };
-    submit: () => Promise<import("../shared/types.js").WorkflowOutcome<unknown>>;
     reset: () => void;
-    isBusy: boolean;
-    pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
-    error: import("../shared/types.js").WorkflowError | null;
+    diagnostics: {
+        pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
+        error: import("../shared/types.js").WorkflowError | null;
+    };
 };
 //# sourceMappingURL=form.d.ts.map

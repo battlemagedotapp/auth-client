@@ -1,11 +1,24 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useWorkflowAction, useCommittedRef, type ActionExecution } from "../shared/action.js";
+import { useLayoutEffect, useRef, useState } from "react";
+import {
+  useWorkflowAction,
+  useCommittedRef,
+  requireAvailable,
+  type ActionExecution,
+} from "../shared/action.js";
 import { useInvitationFormState, type FormOptions } from "./form.js";
 import type { CacheRuntime } from "../../cache/query-cache.js";
 import type { Result } from "../../client/types.js";
-import type { InvitationOutcome, InvitationFieldErrors, InvitationSync } from "./types.js";
+import type { WorkflowOutcome, WorkflowError, FormFieldErrors } from "../shared/types.js";
+import type { ZodType } from "zod";
+import { defineWorkflow } from "../shared/root.js";
+import type { WorkflowFeedbackOptions } from "../shared/types.js";
 
 type Values = Record<string, unknown>;
+type InvitationSync = Readonly<{
+  invitationId: string;
+  organizationId: string;
+  error: WorkflowError | null;
+}>;
 // Internal endpoint bridge; public surfaces retain the concrete configured client.
 export type InvitationReads = {
   useListOrganizations(query?: undefined, options?: Options): Result<unknown>;
@@ -25,7 +38,7 @@ export type InvitationReads = {
 type WriteOptions = { throw: true; retry: 0 };
 type InvitationWrite = (body: { invitationId: string }, options: WriteOptions) => Promise<unknown>;
 type Callback<T = unknown> = (data: T) => void | Promise<void>;
-type Options = { enabled?: boolean };
+type Options = WorkflowFeedbackOptions & { enabled?: boolean };
 type Accepted = { invitationId: string; organization: unknown };
 type Responses = Options & {
   onAccepted?: Callback<Accepted>;
@@ -37,9 +50,7 @@ type OutgoingOptions = Options & {
   onCancelled?: Callback<{ invitationId: string; result: unknown }>;
   onResent?: Callback;
 };
-function ignored(
-  reason: "disabled" | "busy" | "obsolete" | "unavailable",
-): InvitationOutcome<never> {
+function ignored(reason: "disabled" | "busy" | "obsolete" | "unavailable"): WorkflowOutcome<never> {
   return { status: "ignored", reason };
 }
 function asRecord(value: unknown): Values | undefined {
@@ -53,8 +64,8 @@ function asRecords(value: unknown): Values[] {
 function readState<T>({ error, ...state }: Result<T>) {
   return { ...state, queryError: error };
 }
-function validateValues(values: Values): InvitationFieldErrors<Values> {
-  const errors: InvitationFieldErrors<Values> = {};
+function validateValues(values: Values): FormFieldErrors<Values> {
+  const errors: FormFieldErrors<Values> = {};
   if (typeof values.email !== "string" || !values.email.trim()) errors.email = { code: "required" };
   const role = values.role;
   if (
@@ -91,14 +102,16 @@ function resendId(data: unknown, values: Values): string | undefined {
 
 export function createInvitationWorkflows(client: InvitationReads, runtime: CacheRuntime) {
   function useResponses(options: Responses, scope: string, data: unknown) {
-    const action = useWorkflowAction(runtime, scope, options.enabled);
+    const action = useWorkflowAction(runtime, scope, options.enabled, options);
     const latestData = useCommittedRef(data);
-    const subject = (invitationId: string) => {
-      const row = (
-        Array.isArray(latestData.current)
-          ? asRecords(latestData.current)
-          : [asRecord(latestData.current)]
-      ).find((item) => item?.id === invitationId);
+    const observed = (invitationId: string, source: unknown) =>
+      (Array.isArray(source) ? asRecords(source) : [asRecord(source)]).find(
+        (row) => row?.id === invitationId,
+      );
+    const subject = (invitationId: string, source: unknown) => {
+      const row = (Array.isArray(source) ? asRecords(source) : [asRecord(source)]).find(
+        (item) => item?.id === invitationId,
+      );
       return typeof row?.organizationId === "string" ? { organizationId: row.organizationId } : {};
     };
     const directory = client.useListOrganizations(undefined, { enabled: options.enabled });
@@ -141,16 +154,16 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
       // Clear the recovery receipt before the application callback: it must not be replayed by retrySync.
       receipt.current.delete(value.invitationId);
       publish();
-      transaction.phase("callback");
-      await options.onAccepted?.(accepted);
+      await transaction.complete(() => options.onAccepted?.(accepted));
       return accepted;
     }
     function accept(invitationId: string) {
       if (!invitationId) return Promise.resolve(ignored("unavailable"));
       if (activeReceipt(invitationId)) return Promise.resolve(ignored("unavailable"));
       return action.run(
-        { operation: "accept", invitationId, ...subject(invitationId) },
+        { operation: "accept", invitationId, ...subject(invitationId, latestData.current) },
         async (transaction) => {
+          requireAvailable(observed(invitationId, latestData.current)?.status === "pending");
           const result = await transaction.write(() =>
             client.organization.acceptInvitation({ invitationId }, { throw: true, retry: 0 }),
           );
@@ -179,27 +192,64 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
       if (!invitationId || activeReceipt(invitationId))
         return Promise.resolve(ignored("unavailable"));
       return action.run(
-        { operation: "reject", invitationId, ...subject(invitationId) },
+        { operation: "reject", invitationId, ...subject(invitationId, latestData.current) },
         async (transaction) => {
+          requireAvailable(observed(invitationId, latestData.current)?.status === "pending");
           const result = await transaction.write(() =>
             client.organization.rejectInvitation({ invitationId }, { throw: true, retry: 0 }),
           );
           if (!transaction.current()) throw new Error("Obsolete invitation rejection");
-          transaction.phase("callback");
-          await options.onRejected?.({ invitationId, result });
+          await transaction.complete(() => options.onRejected?.({ invitationId, result }));
           return result;
         },
       );
     }
+    const pendingSync =
+      action.available && recoveries.owner === action.owner ? recoveries.entries : [];
     return {
-      isBusy: action.isBusy,
-      pendingAction: action.pendingAction,
-      error: action.error,
+      feedback: action.feedback(
+        pendingSync.map((entry) => ({
+          target: {
+            operation: "accept",
+            invitationId: entry.invitationId,
+            organizationId: entry.organizationId,
+          },
+          error: entry.error?.cause,
+          diagnostics: entry.error,
+          recovery: {
+            ...action.control({ operation: "accept", invitationId: entry.invitationId }),
+            run: () => retrySync(entry.invitationId),
+          },
+        })),
+      ),
+      invitation: (invitationId: string) => {
+        const row = (Array.isArray(data) ? asRecords(data) : [asRecord(data)]).find(
+          (row) => row?.id === invitationId,
+        );
+        const reason = pendingSync.some((entry) => entry.invitationId === invitationId)
+          ? { code: "recovery" as const }
+          : row?.status === "pending"
+            ? null
+            : { code: "unavailable" as const };
+        return {
+          accept: {
+            ...action.control(
+              { operation: "accept", invitationId, ...subject(invitationId, data) },
+              reason,
+            ),
+            run: () => accept(invitationId),
+          },
+          reject: {
+            ...action.control(
+              { operation: "reject", invitationId, ...subject(invitationId, data) },
+              reason,
+            ),
+            run: () => reject(invitationId),
+          },
+        };
+      },
+      diagnostics: { pendingAction: action.pendingAction, error: action.error },
       reset: action.reset,
-      accept,
-      reject,
-      retrySync,
-      pendingSync: action.available && recoveries.owner === action.owner ? recoveries.entries : [],
     };
   }
   function useReceivedInvitations(options: Responses = {}) {
@@ -218,13 +268,9 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
     const { data: invitation, ...read } = readState(query);
     return {
       ...read,
-      invitation,
       ...responses,
-      accept: () => responses.accept(options.invitationId),
-      reject: () => responses.reject(options.invitationId),
-      retrySync: () => responses.retrySync(options.invitationId),
-      pendingSync:
-        responses.pendingSync.find((entry) => entry.invitationId === options.invitationId) ?? null,
+      invitation,
+      actions: responses.invitation(options.invitationId),
     };
   }
   function useOrganizationInvitations(options: OutgoingOptions) {
@@ -233,30 +279,50 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
       { organizationId: options.organizationId },
       { enabled },
     );
-    const action = useWorkflowAction(runtime, `outgoing:${options.organizationId}`, enabled);
+    const action = useWorkflowAction(
+      runtime,
+      `outgoing:${options.organizationId}`,
+      enabled,
+      options,
+    );
+    const latest = useCommittedRef(query.data);
     function cancel(invitationId: string) {
       if (!invitationId) return Promise.resolve(ignored("unavailable"));
       return action.run(
         { operation: "cancel", invitationId, organizationId: options.organizationId },
         async (transaction) => {
+          requireAvailable(
+            asRecords(latest.current).some(
+              (row) => row.id === invitationId && row.status === "pending",
+            ),
+          );
           const result = await transaction.write(() =>
             client.organization.cancelInvitation({ invitationId }, { throw: true, retry: 0 }),
           );
           if (!transaction.current()) throw new Error("Obsolete invitation cancellation");
-          transaction.phase("callback");
-          await options.onCancelled?.({ invitationId, result });
+          await transaction.complete(() => options.onCancelled?.({ invitationId, result }));
           return result;
         },
       );
     }
-    function resend(values: Values) {
+    function resend(invitationId: string) {
       return action.run(
         {
           operation: "resend",
-          invitationId: resendId(query.data, values),
+          invitationId,
           organizationId: options.organizationId,
         },
         async (transaction) => {
+          const observed = asRecords(latest.current).find((row) => row.id === invitationId);
+          requireAvailable(observed?.status === "pending");
+          const {
+            id: _id,
+            status: _status,
+            inviterId: _inviter,
+            createdAt: _created,
+            expiresAt: _expires,
+            ...values
+          } = observed;
           transaction.phase("validation");
           const errors = validateValues(values);
           if (Object.keys(errors).length) throw errors;
@@ -268,20 +334,36 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
             }),
           );
           if (!transaction.current()) throw new Error("Obsolete invitation resend");
-          transaction.phase("callback");
-          await options.onResent?.(result);
+          await transaction.complete(() => options.onResent?.(result));
           return result;
         },
       );
     }
     return {
       ...readState(query),
-      isBusy: action.isBusy,
-      pendingAction: action.pendingAction,
-      error: action.error,
+      feedback: action.feedback(),
+      invitation: (invitationId: string) => {
+        const row = asRecords(query.data).find((row) => row.id === invitationId);
+        const reason = row?.status === "pending" ? null : { code: "unavailable" as const };
+        return {
+          cancel: {
+            ...action.control(
+              { operation: "cancel", invitationId, organizationId: options.organizationId },
+              reason,
+            ),
+            run: () => cancel(invitationId),
+          },
+          resend: {
+            ...action.control(
+              { operation: "resend", invitationId, organizationId: options.organizationId },
+              reason,
+            ),
+            run: () => resend(invitationId),
+          },
+        };
+      },
+      diagnostics: { pendingAction: action.pendingAction, error: action.error },
       reset: action.reset,
-      cancel,
-      resend,
     };
   }
   function useInvitationForm(options: FormOptions) {
@@ -290,6 +372,7 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
       runtime,
       `form:${options.organizationId}:${options.mode ?? "invite"}`,
       enabled,
+      options,
     );
     const outgoing = client.useListInvitations(
       { organizationId: options.organizationId },
@@ -306,33 +389,26 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
       (values) => (options.mode === "resend" ? resendId(outgoing.data, values) : undefined),
     );
   }
+  const form = defineWorkflow(useInvitationForm);
+  const received = defineWorkflow(useReceivedInvitations);
+  const response = defineWorkflow(useInvitationResponse);
+  const outgoing = defineWorkflow(useOrganizationInvitations);
   return {
     useInvitationForm,
+    defineInvitationForm: (schema: ZodType<Values, Values>) =>
+      defineWorkflow((options: FormOptions) =>
+        useInvitationForm({ ...options, schema: options.schema ?? schema }),
+      ),
     useReceivedInvitations,
     useInvitationResponse,
     useOrganizationInvitations,
-    InvitationForm: ({
-      children,
-      ...options
-    }: FormOptions & { children: (state: ReturnType<typeof useInvitationForm>) => ReactNode }) =>
-      children(useInvitationForm(options)),
-    ReceivedInvitations: ({
-      children,
-      ...options
-    }: Responses & { children: (state: ReturnType<typeof useReceivedInvitations>) => ReactNode }) =>
-      children(useReceivedInvitations(options)),
-    InvitationResponse: ({
-      children,
-      ...options
-    }: Responses & {
-      invitationId: string;
-      children: (state: ReturnType<typeof useInvitationResponse>) => ReactNode;
-    }) => children(useInvitationResponse(options)),
-    OrganizationInvitations: ({
-      children,
-      ...options
-    }: OutgoingOptions & {
-      children: (state: ReturnType<typeof useOrganizationInvitations>) => ReactNode;
-    }) => children(useOrganizationInvitations(options)),
+    InvitationForm: form.Root,
+    useInvitationFormContext: form.useWorkflowContext,
+    ReceivedInvitations: received.Root,
+    useReceivedInvitationsContext: received.useWorkflowContext,
+    InvitationResponse: response.Root,
+    useInvitationResponseContext: response.useWorkflowContext,
+    OrganizationInvitations: outgoing.Root,
+    useOrganizationInvitationsContext: outgoing.useWorkflowContext,
   };
 }

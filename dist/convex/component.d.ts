@@ -14,7 +14,7 @@ declare const metadata: import("convex/values").VUnion<{
     email: import("convex/values").VString<string | undefined, "optional">;
     organizationId: import("convex/values").VString<string | undefined, "optional">;
     inviterId: import("convex/values").VString<string | undefined, "optional">;
-}, "required", "organizationId" | "email" | "_id" | "inviterId">], "required", "organizationId" | "email" | "_id" | "inviterId">;
+}, "required", "organizationId" | "email" | "inviterId" | "_id">], "required", "organizationId" | "email" | "inviterId" | "_id">;
 export type LookupMetadata = Infer<typeof metadata>;
 /** Register inside the local Better Auth component, never in the parent app. */
 export declare const lookup: import("convex/server").RegisteredQuery<"public", {
