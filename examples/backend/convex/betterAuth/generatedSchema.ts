@@ -92,6 +92,7 @@ export const tables = {
     expiresAt: v.number(),
     createdAt: v.number(),
     inviterId: v.string(),
+    ticket: v.optional(v.union(v.null(), v.number())),
   })
     .index("organizationId", ["organizationId"])
     .index("email", ["email"])

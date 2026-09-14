@@ -5,11 +5,11 @@ import {
   authSignalTables,
   markSignal,
   composeTriggers,
-} from "../packages/better-auth-convex-client/src/convex/index.js";
+} from "../packages/auth-client/src/convex/index.js";
 import {
   dependencies,
   nextExpiry,
-} from "../packages/better-auth-convex-client/src/dependencies.js";
+} from "../packages/auth-client/src/cache/resource-dependencies.js";
 it("increments scoped revisions transactionally and retains unrelated rows", async () => {
   const t = convexTest(defineSchema({ ...authSignalTables }), {
     "./_generated/server.js": async () => import("convex/server"),
@@ -95,9 +95,8 @@ it("selects future expiry only, preserving already-expired endpoint payloads", (
 it("authorizes signal scopes and enforces invitation verification and protocol", async () => {
   const { defineTable, makeFunctionReference } = await import("convex/server");
   const { v } = await import("convex/values");
-  const { createSignalQueries } =
-    await import("../packages/better-auth-convex-client/src/convex/index.js");
-  const { lookup } = await import("../packages/better-auth-convex-client/src/convex/component.js");
+  const { createSignalQueries } = await import("../packages/auth-client/src/convex/index.js");
+  const { lookup } = await import("../packages/auth-client/src/convex/component.js");
   const schema = defineSchema({
     ...authSignalTables,
     member: defineTable({ organizationId: v.string(), userId: v.string() }).index(

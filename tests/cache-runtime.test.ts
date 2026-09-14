@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
-import { CacheRuntime } from "../packages/better-auth-convex-client/src/cache-runtime.js";
+import { CacheRuntime } from "../packages/auth-client/src/cache/query-cache.js";
 import type { ConvexReactClient } from "convex/react";
-import type { InvalidationApi } from "../packages/better-auth-convex-client/src/types.js";
+import type { InvalidationApi } from "../packages/auth-client/src/client/types.js";
 
 function fixture() {
   const updates: Array<() => void> = [];

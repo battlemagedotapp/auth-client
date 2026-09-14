@@ -10,8 +10,8 @@ import {
   composeTriggers,
   createSignalQueries,
   type ComponentLookupReference,
-} from "../packages/better-auth-convex-client/src/convex/index.js";
-import type { LookupMetadata } from "../packages/better-auth-convex-client/src/convex/component.js";
+} from "../packages/auth-client/src/convex/index.js";
+import type { LookupMetadata } from "../packages/auth-client/src/convex/component.js";
 const appSchema = defineSchema({ ...authSignalTables, audit: defineTable({ email: v.string() }) });
 type DataModel = DataModelFromSchemaDefinition<typeof appSchema>;
 const localSchema = defineSchema({ user: defineTable({ email: v.string(), custom: v.number() }) });

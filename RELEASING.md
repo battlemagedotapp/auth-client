@@ -2,7 +2,7 @@
 
 There is one distribution format: a compiled package at a versioned Git tag.
 
-1. Update `packages/better-auth-convex-client/package.json` to the intended version, complete verification, and commit/push the reviewed source when authorized. Use patch versions for compatible fixes, minor versions for breaking changes before 1.0, and `-beta.1` for opt-in prereleases.
+1. Update `packages/auth-client/package.json` to the intended version, complete verification, and commit/push the reviewed source when authorized. Use patch versions for compatible fixes, minor versions for breaking changes before 1.0, and `-beta.1` for opt-in prereleases.
 2. In GitHub Actions, select **Release**, choose the reviewed source branch, and click **Run workflow**. The workflow reads the package version, verifies the library and isolated consumers, then publishes the compiled snapshot and its `vVERSION` tag. Development pushes do not publish anything.
 3. Install the command shown in the GitHub Release notes. Each project upgrades its own exact tag and lockfile.
 

@@ -1,0 +1,57 @@
+# Source organization
+
+The package lives in `packages/auth-client`. Its name and public imports remain `@strawdev/auth-client`; moving source files does not add supported deep imports.
+
+```text
+src/
+  index.tsx                        Public frontend exports
+  signal-protocol.ts               Shared wire types without frontend dependencies
+  client/
+    create-client.ts               Capability selection and public method wrappers
+    provider.tsx                   Existing Convex connection and identity lifecycle
+    provider-context.ts            Matching-provider checks and runtime association
+    types.ts                       Better Auth endpoint inference and client capabilities
+  cache/
+    query-cache.ts                 Private QueryClient, subscriptions, refresh and expiry
+    use-cached-resource.ts         Read observers, protected-data masking and dependencies
+    resource-dependencies.ts       Endpoint-to-signal dependency discovery
+  workflows/
+    shared/
+      action.ts                    Operation ownership, conflicts and phased outcomes
+      form.ts                      RHF validation, defaults and value-only bindings
+      types.ts                     Common action, policy and form contracts
+    invitations/
+      workflows.tsx                Invitation reads, actions and acceptance recovery
+      form.ts                      Invitation-specific validation and submission
+      types.ts                     Invitation contracts inferred from Better Auth
+    organizations/
+      workflows.tsx                Directory, settings, creation and member workflows
+      types.ts                     Organization and member contracts
+    sessions/
+      workflows.tsx                Session-list actions and freshness feedback
+      types.ts                     Session contracts
+  convex/
+    index.ts                       Application signal queries and transactional triggers
+    component.ts                   Component-local access/dependency metadata readers
+```
+
+Domain folders supply context, so their implementation and type files do not repeat the domain name. Shared types contain only concepts used across workflows; organization and session types live with their implementations. The frontend entry point only exports supported symbols.
+
+## Naming and ownership
+
+- `useWorkflowAction` coordinates an operation; it is not another cache or authentication hook.
+- `ActionExecution` describes guarded write/callback phases. It does not imply a database transaction or whole-endpoint atomicity.
+- `useCommittedRef` retains the latest committed configuration for asynchronous work. Render-time options must not escape through an abandoned render.
+- `useOrganizationRecovery` owns only the minimal successful-write receipt. Canonical organizations remain in the existing query cache.
+- `useOrganizationResource` resolves explicit scope and observes organization/role reads. It does not select the session's active organization.
+- `FormFieldIssue`, `FormValidationIssue`, and `FormFieldErrors` describe shared form feedback. Existing invitation-prefixed names are compatible aliases.
+
+Keep public names stable unless a consumer contract is intentionally revised. Internal filenames are not package exports. Do not import backend modules from frontend implementation, or React modules from backend helpers.
+
+## Where changes belong
+
+Add endpoint dependencies to `cache/resource-dependencies.ts`; lifecycle/invalidation changes belong in `cache/query-cache.ts`. Put a domain rule in its workflow unless multiple existing workflows need the same mechanism. Put platform lifecycle wiring, navigation, presentation, uploads, and application cleanup in the example or consumer.
+
+Tests ending in `.types.ts` or `.types.tsx` are compile-time consumer contracts. Their names identify capabilities, endpoint inference, backend integration, Gaia compatibility, invitations, or organization/session workflows. Behavioral tests use `.test.ts` or `.test.tsx`. The package check compiles the same type contracts against an installed artifact.
+
+The source tree is deliberately shallow. Avoid a generic utility layer or one-file-per-symbol decomposition. See [pagination](pagination.md) before replacing member reads with a direct Convex query.

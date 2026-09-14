@@ -1,11 +1,11 @@
-import { cp, mkdir, mkdtemp, readFile, writeFile, appendFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, writeFile, appendFile, rm, symlink } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 
 export async function prepareRelease() {
   const root = resolve(".");
-  const source = join(root, "packages/better-auth-convex-client");
+  const source = join(root, "packages/auth-client");
   const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
   await mkdir(join(root, "artifacts"), { recursive: true });
   const directory = await mkdtemp(join(root, "artifacts/release-"));
@@ -23,10 +23,14 @@ export async function prepareRelease() {
   // Compile the copied sources so emitted map paths resolve within the package.
   const config = join(directory, "tsconfig.build.json");
   await cp(join(source, "tsconfig.build.json"), config);
+  // Resolve package-local runtime dependencies during isolated compilation only.
+  const dependencies = join(directory, "node_modules");
+  await symlink(join(source, "node_modules"), dependencies, "dir");
   try {
     execFileSync("pnpm", ["exec", "tsc", "-p", config], { cwd: root, stdio: "inherit" });
   } finally {
     await rm(config);
+    await rm(dependencies);
   }
   return { directory, version: manifest.version };
 }

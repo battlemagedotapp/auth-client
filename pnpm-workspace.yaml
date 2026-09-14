@@ -4,5 +4,7 @@ packages:
 allowBuilds:
   esbuild: true
 
+minimumReleaseAgeExclude:
+  - zod@4.6.4
 overrides:
   react-native-reanimated: 4.5.1

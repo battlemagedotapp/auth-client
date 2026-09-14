@@ -1,10 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { createAuthClient } from "better-auth/react";
 import { organizationClient } from "better-auth/client/plugins";
-import {
-  createAuthDataClient,
-  type InvalidationApi,
-} from "../packages/better-auth-convex-client/src/index.js";
+import { createAuthDataClient, type InvalidationApi } from "../packages/auth-client/src/index.js";
 
 const authClient = createAuthClient({ plugins: [organizationClient()] });
 const authData = createAuthDataClient({

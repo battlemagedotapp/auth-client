@@ -25,3 +25,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Runtime form dependencies
+
+React Hook Form 7.88.0 and @hookform/resolvers 5.9.1 are MIT licensed,
+copyright (c) 2019-present Beier(Bill) Luo.
+References: https://github.com/react-hook-form/react-hook-form and
+https://github.com/react-hook-form/resolvers.
+
+Zod 4.6.4 is an MIT-licensed peer dependency, copyright (c) 2025 Colin McDonnell.
+Reference: https://github.com/colinhacks/zod.
+
+These packages are installed separately with their own license files. No source
+from them is vendored into this package's TypeScript emission.

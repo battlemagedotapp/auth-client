@@ -1,9 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 import { organizationClient } from "better-auth/client/plugins";
-import {
-  createAuthDataClient,
-  type InvalidationApi,
-} from "../packages/better-auth-convex-client/src/index.js";
+import { createAuthDataClient, type InvalidationApi } from "../packages/auth-client/src/index.js";
 const api = {} as InvalidationApi;
 const base = createAuthClient();
 const organization = createAuthClient({ plugins: [organizationClient()] });

@@ -3,6 +3,6 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 60000,
   expect: { timeout: 10000 },
-  use: { baseURL: "http://localhost:8099", headless: true },
+  use: { baseURL: "http://localhost:8099", headless: true, actionTimeout: 10000 },
   workers: 1,
 });

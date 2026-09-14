@@ -43,6 +43,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => ({
   plugins: [
     expo(),
     organization({
+      schema: { invitation: { additionalFields: { ticket: { type: "number", required: false } } } },
       requireEmailVerificationOnInvitation: requireVerifiedInvitationEmail,
       sendInvitationEmail: async (data) =>
         sendMail(data.email, `${process.env.SITE_URL}/?invitationId=${data.id}`),

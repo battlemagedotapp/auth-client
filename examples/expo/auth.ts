@@ -1,5 +1,6 @@
 import { createAuthClient } from "better-auth/react";
-import { organizationClient } from "better-auth/client/plugins";
+import { organizationClient, inferOrgAdditionalFields } from "better-auth/client/plugins";
+import type { createAuth } from "../backend/convex/auth";
 import { expoClient } from "@better-auth/expo/client";
 import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
 import * as SecureStore from "expo-secure-store";
@@ -10,7 +11,7 @@ import { createAuthDataClient } from "@strawdev/auth-client";
 export const authClient = createAuthClient({
   baseURL: process.env.EXPO_PUBLIC_CONVEX_SITE_URL,
   plugins: [
-    organizationClient(),
+    organizationClient({ schema: inferOrgAdditionalFields<ReturnType<typeof createAuth>>() }),
     convexClient(),
     ...(Platform.OS === "web"
       ? [crossDomainClient()]

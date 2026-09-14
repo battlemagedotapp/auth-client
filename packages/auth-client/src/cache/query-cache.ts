@@ -1,6 +1,11 @@
 import { QueryClient, hashKey, type QueryKey } from "@tanstack/react-query";
 import type { ConvexReactClient } from "convex/react";
-import type { SessionClient, InvalidationApi, Features, ResourceDependency } from "./types.js";
+import type {
+  SessionClient,
+  InvalidationApi,
+  Features,
+  ResourceDependency,
+} from "../client/types.js";
 export type Identity = { userId?: string; sessionId?: string; ready: boolean };
 export class CacheRuntime {
   readonly cache = new QueryClient({

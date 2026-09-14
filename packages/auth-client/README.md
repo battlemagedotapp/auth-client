@@ -475,7 +475,3 @@ The official 0.12.5 provider type resolves its abstract session to `never` with 
 Architecture and cancellation patterns were informed by the reference application and Better Auth UI; see `THIRD_PARTY_NOTICES.md`. Verification results and remaining qualification are recorded in `VERIFICATION.md`.
 
 For a typed application context, call `createSignalQueries<DataModel>(options)` using the application's generated Convex `DataModel`. Compose application hooks with `composeTriggers<DataModel, typeof localAuthSchema>(applicationTriggers, signalTriggers)` to retain the official integration's schema-specific callback types. Component lookup references are checked against the exported reader's validator-derived arguments and return metadata.
-
-## Maintaining this repository
-
-The package source is in `packages/auth-client`. See the [source organization guide](docs/architecture.md) for module ownership and naming, and the [Convex pagination review](docs/pagination.md) for the distinction between component cursors and Better Auth's HTTP endpoint contract. These are repository maintenance notes; the package's three public import paths remain unchanged.

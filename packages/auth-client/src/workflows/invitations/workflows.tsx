@@ -1,0 +1,338 @@
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useWorkflowAction, useCommittedRef, type ActionExecution } from "../shared/action.js";
+import { useInvitationFormState, type FormOptions } from "./form.js";
+import type { CacheRuntime } from "../../cache/query-cache.js";
+import type { Result } from "../../client/types.js";
+import type { InvitationOutcome, InvitationFieldErrors, InvitationSync } from "./types.js";
+
+type Values = Record<string, unknown>;
+// Internal endpoint bridge; public surfaces retain the concrete configured client.
+export type InvitationReads = {
+  useListOrganizations(query?: undefined, options?: Options): Result<unknown>;
+  useListUserInvitations(query?: undefined, options?: Options): Result<unknown>;
+  useInvitation(query: { id: string }, options?: Options): Result<unknown>;
+  useListInvitations(query: { organizationId: string }, options?: Options): Result<unknown>;
+  organization: {
+    acceptInvitation: InvitationWrite;
+    rejectInvitation: InvitationWrite;
+    cancelInvitation: InvitationWrite;
+    inviteMember(
+      body: Values & { organizationId: string; resend: boolean },
+      options: WriteOptions,
+    ): Promise<unknown>;
+  };
+};
+type WriteOptions = { throw: true; retry: 0 };
+type InvitationWrite = (body: { invitationId: string }, options: WriteOptions) => Promise<unknown>;
+type Callback<T = unknown> = (data: T) => void | Promise<void>;
+type Options = { enabled?: boolean };
+type Accepted = { invitationId: string; organization: unknown };
+type Responses = Options & {
+  onAccepted?: Callback<Accepted>;
+  onRejected?: Callback<{ invitationId: string; result: unknown }>;
+};
+type Receipt = { invitationId: string; organizationId: string };
+type OutgoingOptions = Options & {
+  organizationId: string;
+  onCancelled?: Callback<{ invitationId: string; result: unknown }>;
+  onResent?: Callback;
+};
+function ignored(
+  reason: "disabled" | "busy" | "obsolete" | "unavailable",
+): InvitationOutcome<never> {
+  return { status: "ignored", reason };
+}
+function asRecord(value: unknown): Values | undefined {
+  return value !== null && typeof value === "object" ? (value as Values) : undefined;
+}
+function asRecords(value: unknown): Values[] {
+  return Array.isArray(value)
+    ? value.map(asRecord).filter((item): item is Values => item !== undefined)
+    : [];
+}
+function readState<T>({ error, ...state }: Result<T>) {
+  return { ...state, queryError: error };
+}
+function validateValues(values: Values): InvitationFieldErrors<Values> {
+  const errors: InvitationFieldErrors<Values> = {};
+  if (typeof values.email !== "string" || !values.email.trim()) errors.email = { code: "required" };
+  const role = values.role;
+  if (
+    !(typeof role === "string" && role.trim()) &&
+    !(
+      Array.isArray(role) &&
+      role.length &&
+      role.every((item) => typeof item === "string" && item.trim())
+    )
+  )
+    errors.role = { code: "required" };
+  return errors;
+}
+function invitationBody(values: Values, organizationId: string, resend: boolean) {
+  const {
+    fetchOptions: _fetch,
+    teamId: _team,
+    organizationId: _org,
+    resend: _resend,
+    ...body
+  } = values;
+  return { ...body, organizationId, resend };
+}
+function resendId(data: unknown, values: Values): string | undefined {
+  const email = typeof values.email === "string" ? values.email.toLowerCase() : undefined;
+  const row = asRecords(data).find(
+    (item) =>
+      typeof item.email === "string" &&
+      item.email.toLowerCase() === email &&
+      item.status === "pending",
+  );
+  return typeof row?.id === "string" ? row.id : undefined;
+}
+
+export function createInvitationWorkflows(client: InvitationReads, runtime: CacheRuntime) {
+  function useResponses(options: Responses, scope: string, data: unknown) {
+    const action = useWorkflowAction(runtime, scope, options.enabled);
+    const latestData = useCommittedRef(data);
+    const subject = (invitationId: string) => {
+      const row = (
+        Array.isArray(latestData.current)
+          ? asRecords(latestData.current)
+          : [asRecord(latestData.current)]
+      ).find((item) => item?.id === invitationId);
+      return typeof row?.organizationId === "string" ? { organizationId: row.organizationId } : {};
+    };
+    const directory = client.useListOrganizations(undefined, { enabled: options.enabled });
+    const receipt = useRef(new Map<string, InvitationSync>());
+    const [recoveries, setRecoveries] = useState<{ owner: symbol; entries: InvitationSync[] }>({
+      owner: action.owner,
+      entries: [],
+    });
+    const publish = () =>
+      setRecoveries({ owner: action.owner, entries: [...receipt.current.values()] });
+    const activeReceipt = (id: string) => (action.current() ? receipt.current.get(id) : undefined);
+    useLayoutEffect(() => {
+      const entries = receipt.current;
+      entries.clear();
+      return () => {
+        entries.clear();
+        setRecoveries({ owner: action.owner, entries: [] });
+      };
+    }, [action.owner]);
+    async function complete(value: Receipt, transaction: ActionExecution) {
+      transaction.phase("synchronization");
+      let organization: Values | undefined;
+      try {
+        const refreshed = await directory.refetch();
+        if (!transaction.current()) throw new Error("Obsolete invitation completion");
+        organization = asRecords(refreshed?.data).find((item) => item.id === value.organizationId);
+        if (!organization)
+          throw new Error("The accepted organization was not present in the refreshed directory.");
+      } catch (cause) {
+        if (transaction.current()) {
+          receipt.current.set(value.invitationId, {
+            ...value,
+            error: { phase: "synchronization", cause, writeSucceeded: true },
+          });
+          publish();
+        }
+        throw cause;
+      }
+      const accepted = { invitationId: value.invitationId, organization };
+      // Clear the recovery receipt before the application callback: it must not be replayed by retrySync.
+      receipt.current.delete(value.invitationId);
+      publish();
+      transaction.phase("callback");
+      await options.onAccepted?.(accepted);
+      return accepted;
+    }
+    function accept(invitationId: string) {
+      if (!invitationId) return Promise.resolve(ignored("unavailable"));
+      if (activeReceipt(invitationId)) return Promise.resolve(ignored("unavailable"));
+      return action.run(
+        { operation: "accept", invitationId, ...subject(invitationId) },
+        async (transaction) => {
+          const result = await transaction.write(() =>
+            client.organization.acceptInvitation({ invitationId }, { throw: true, retry: 0 }),
+          );
+          if (!transaction.current()) throw new Error("Obsolete invitation acceptance");
+          transaction.phase("synchronization");
+          const organizationId = asRecord(asRecord(result)?.member)?.organizationId;
+          if (typeof organizationId !== "string")
+            throw new Error("Acceptance did not return a membership organization ID.");
+          const value = { invitationId, organizationId };
+          receipt.current.set(invitationId, { ...value, error: null });
+          publish();
+          return complete(value, transaction);
+        },
+      );
+    }
+    function retrySync(invitationId: string) {
+      const value = activeReceipt(invitationId);
+      if (!value) return Promise.resolve(ignored("unavailable"));
+      return action.run(
+        { operation: "accept", invitationId: value.invitationId },
+        (transaction) => complete(value, transaction),
+        true,
+      );
+    }
+    function reject(invitationId: string) {
+      if (!invitationId || activeReceipt(invitationId))
+        return Promise.resolve(ignored("unavailable"));
+      return action.run(
+        { operation: "reject", invitationId, ...subject(invitationId) },
+        async (transaction) => {
+          const result = await transaction.write(() =>
+            client.organization.rejectInvitation({ invitationId }, { throw: true, retry: 0 }),
+          );
+          if (!transaction.current()) throw new Error("Obsolete invitation rejection");
+          transaction.phase("callback");
+          await options.onRejected?.({ invitationId, result });
+          return result;
+        },
+      );
+    }
+    return {
+      isBusy: action.isBusy,
+      pendingAction: action.pendingAction,
+      error: action.error,
+      reset: action.reset,
+      accept,
+      reject,
+      retrySync,
+      pendingSync: action.available && recoveries.owner === action.owner ? recoveries.entries : [],
+    };
+  }
+  function useReceivedInvitations(options: Responses = {}) {
+    const query = client.useListUserInvitations(undefined, { enabled: options.enabled });
+    const responses = useResponses(options, "received", query.data);
+    return { ...readState(query), ...responses };
+  }
+  function useInvitationResponse(options: Responses & { invitationId: string }) {
+    const enabled = options.enabled !== false && Boolean(options.invitationId);
+    const query = client.useInvitation({ id: options.invitationId }, { enabled });
+    const responses = useResponses(
+      { ...options, enabled },
+      `invitation:${options.invitationId}`,
+      query.data,
+    );
+    const { data: invitation, ...read } = readState(query);
+    return {
+      ...read,
+      invitation,
+      ...responses,
+      accept: () => responses.accept(options.invitationId),
+      reject: () => responses.reject(options.invitationId),
+      retrySync: () => responses.retrySync(options.invitationId),
+      pendingSync:
+        responses.pendingSync.find((entry) => entry.invitationId === options.invitationId) ?? null,
+    };
+  }
+  function useOrganizationInvitations(options: OutgoingOptions) {
+    const enabled = options.enabled !== false && Boolean(options.organizationId);
+    const query = client.useListInvitations(
+      { organizationId: options.organizationId },
+      { enabled },
+    );
+    const action = useWorkflowAction(runtime, `outgoing:${options.organizationId}`, enabled);
+    function cancel(invitationId: string) {
+      if (!invitationId) return Promise.resolve(ignored("unavailable"));
+      return action.run(
+        { operation: "cancel", invitationId, organizationId: options.organizationId },
+        async (transaction) => {
+          const result = await transaction.write(() =>
+            client.organization.cancelInvitation({ invitationId }, { throw: true, retry: 0 }),
+          );
+          if (!transaction.current()) throw new Error("Obsolete invitation cancellation");
+          transaction.phase("callback");
+          await options.onCancelled?.({ invitationId, result });
+          return result;
+        },
+      );
+    }
+    function resend(values: Values) {
+      return action.run(
+        {
+          operation: "resend",
+          invitationId: resendId(query.data, values),
+          organizationId: options.organizationId,
+        },
+        async (transaction) => {
+          transaction.phase("validation");
+          const errors = validateValues(values);
+          if (Object.keys(errors).length) throw errors;
+          transaction.phase("write");
+          const result = await transaction.write(() =>
+            client.organization.inviteMember(invitationBody(values, options.organizationId, true), {
+              throw: true,
+              retry: 0,
+            }),
+          );
+          if (!transaction.current()) throw new Error("Obsolete invitation resend");
+          transaction.phase("callback");
+          await options.onResent?.(result);
+          return result;
+        },
+      );
+    }
+    return {
+      ...readState(query),
+      isBusy: action.isBusy,
+      pendingAction: action.pendingAction,
+      error: action.error,
+      reset: action.reset,
+      cancel,
+      resend,
+    };
+  }
+  function useInvitationForm(options: FormOptions) {
+    const enabled = options.enabled !== false && Boolean(options.organizationId);
+    const action = useWorkflowAction(
+      runtime,
+      `form:${options.organizationId}:${options.mode ?? "invite"}`,
+      enabled,
+    );
+    const outgoing = client.useListInvitations(
+      { organizationId: options.organizationId },
+      { enabled: enabled && options.mode === "resend" },
+    );
+    return useInvitationFormState(
+      options,
+      action,
+      (values) =>
+        client.organization.inviteMember(
+          invitationBody(values, options.organizationId, options.mode === "resend"),
+          { throw: true, retry: 0 },
+        ),
+      (values) => (options.mode === "resend" ? resendId(outgoing.data, values) : undefined),
+    );
+  }
+  return {
+    useInvitationForm,
+    useReceivedInvitations,
+    useInvitationResponse,
+    useOrganizationInvitations,
+    InvitationForm: ({
+      children,
+      ...options
+    }: FormOptions & { children: (state: ReturnType<typeof useInvitationForm>) => ReactNode }) =>
+      children(useInvitationForm(options)),
+    ReceivedInvitations: ({
+      children,
+      ...options
+    }: Responses & { children: (state: ReturnType<typeof useReceivedInvitations>) => ReactNode }) =>
+      children(useReceivedInvitations(options)),
+    InvitationResponse: ({
+      children,
+      ...options
+    }: Responses & {
+      invitationId: string;
+      children: (state: ReturnType<typeof useInvitationResponse>) => ReactNode;
+    }) => children(useInvitationResponse(options)),
+    OrganizationInvitations: ({
+      children,
+      ...options
+    }: OutgoingOptions & {
+      children: (state: ReturnType<typeof useOrganizationInvitations>) => ReactNode;
+    }) => children(useOrganizationInvitations(options)),
+  };
+}

@@ -19,7 +19,7 @@ import {
 import type { Triggers } from "@convex-dev/better-auth";
 import { v } from "convex/values";
 import type { lookup as componentLookup } from "./component.js";
-import type { Features, ResourceDependency } from "../types.js";
+import type { Features, ResourceDependency } from "../signal-protocol.js";
 const scope = v.union(
   v.literal("directory"),
   v.literal("organization"),

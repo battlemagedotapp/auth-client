@@ -1,9 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 import { organizationClient } from "better-auth/client/plugins";
-import {
-  createAuthDataClient,
-  type InvalidationApi,
-} from "../packages/better-auth-convex-client/src/index.js";
+import { createAuthDataClient, type InvalidationApi } from "../packages/auth-client/src/index.js";
 const auth = createAuthClient({ plugins: [organizationClient()] });
 const adapter = createAuthDataClient({
   authClient: auth,
@@ -14,7 +11,7 @@ type D = ReturnType<typeof adapter.useListOrganizations>["data"];
 type IsAny<T> = 0 extends 1 & T ? true : false;
 const notAny: IsAny<D> = false;
 void notAny;
-import type { Data } from "../packages/better-auth-convex-client/src/types.js";
+import type { Data } from "../packages/auth-client/src/client/types.js";
 const rawNotAny: IsAny<Data<typeof auth.organization.list>> = false;
 void rawNotAny;
 

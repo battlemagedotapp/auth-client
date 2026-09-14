@@ -1,4 +1,4 @@
-import type { ResourceDependency } from "./types.js";
+import type { ResourceDependency } from "../client/types.js";
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }

@@ -2,10 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createAuthClient } from "better-auth/react";
 import { organizationClient } from "better-auth/client/plugins";
-import {
-  createAuthDataClient,
-  AuthDataProvider,
-} from "../packages/better-auth-convex-client/src/index.js";
+import { createAuthDataClient, AuthDataProvider } from "../packages/auth-client/src/index.js";
 import { makeFunctionReference } from "convex/server";
 import { renderHook, waitFor, cleanup, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";

@@ -109,6 +109,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   organizationId: string;
                   role?: null | string;
                   status: string;
+                  ticket?: null | number;
                 };
                 model: "invitation";
               }
@@ -344,6 +345,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "ticket"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -629,6 +631,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "ticket"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -1044,6 +1047,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   organizationId?: string;
                   role?: null | string;
                   status?: string;
+                  ticket?: null | number;
                 };
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -1055,6 +1059,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "ticket"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:
@@ -1397,6 +1402,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   organizationId?: string;
                   role?: null | string;
                   status?: string;
+                  ticket?: null | number;
                 };
                 where?: Array<{
                   connector?: "AND" | "OR";
@@ -1408,6 +1414,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                     | "expiresAt"
                     | "createdAt"
                     | "inviterId"
+                    | "ticket"
                     | "_id";
                   mode?: "sensitive" | "insensitive";
                   operator?:

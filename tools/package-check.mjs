@@ -30,16 +30,13 @@ await writeFile(
       "@tanstack/react-query": "5.102.8",
       react: "19.2.3",
       "@types/react": "19.2.4",
+      zod: "4.6.4",
     },
   }),
 );
 await writeFile(
   join(directory, "pnpm-workspace.yaml"),
-  JSON.stringify({
-    allowBuilds: {
-      esbuild: true,
-    },
-  }),
+  "allowBuilds:\n  esbuild: true\nminimumReleaseAgeExclude:\n  - zod@4.6.4\n",
 );
 execFileSync("pnpm", ["--dir", directory, "install"], { cwd: root, stdio: "inherit" });
 if (process.env.AUTH_CLIENT_GIT_SOURCE) {
@@ -64,6 +61,21 @@ if (process.env.AUTH_CLIENT_EXPECTED_VERSION) {
     throw new Error("Git installation did not use the release tag's version");
 }
 const installedRoot = join(directory, "node_modules/@strawdev/auth-client");
+// Runtime bundle checks cannot catch frontend types leaking into backend declarations.
+const declarations = ["convex/index.d.ts", "convex/component.d.ts"].map((file) =>
+  join(installedRoot, "dist", file),
+);
+const visitedDeclarations = new Set();
+while (declarations.length) {
+  const path = declarations.pop();
+  if (visitedDeclarations.has(path)) continue;
+  visitedDeclarations.add(path);
+  if (/\/dist\/(?:client|workflows)\//.test(path))
+    throw new Error("Backend declarations include frontend client/workflow types");
+  const source = await readFile(path, "utf8");
+  for (const match of source.matchAll(/(?:from\s*|import\(\s*)["'](\.[^"']+)["']/g))
+    declarations.push(resolve(dirname(path), match[1].replace(/\.js$/, ".d.ts")));
+}
 for (const entry of ["index", "convex/index", "convex/component"]) {
   for (const suffix of [".js.map", ".d.ts.map"]) {
     const mapPath = join(installedRoot, "dist", entry + suffix);
@@ -85,18 +97,22 @@ import {lookup} from '@strawdev/auth-client/convex/component';
 const client=createAuthDataClient({authClient:createAuthClient(),api:{} as InvalidationApi,features:{sessions:true}});
 void [client,authSignalTables,lookup];`,
 );
-const fixtures = ["inference.ts", "types.ts", "backend-types.ts", "migration-types.ts"];
+const fixtures = [
+  "endpoint-inference.types.ts",
+  "capabilities.types.ts",
+  "backend.types.ts",
+  "gaia-compatibility.types.ts",
+  "invitations.types.tsx",
+  "organization-session.types.tsx",
+];
 for (const fixture of fixtures) {
   const source = await readFile(join(root, "tests", fixture), "utf8");
   const packed = source
-    .replaceAll("../packages/better-auth-convex-client/src/index.js", "@strawdev/auth-client")
-    .replaceAll("../packages/better-auth-convex-client/src/types.js", "@strawdev/auth-client")
+    .replaceAll("../packages/auth-client/src/index.js", "@strawdev/auth-client")
+    .replaceAll("../packages/auth-client/src/client/types.js", "@strawdev/auth-client")
+    .replaceAll("../packages/auth-client/src/convex/index.js", "@strawdev/auth-client/convex")
     .replaceAll(
-      "../packages/better-auth-convex-client/src/convex/index.js",
-      "@strawdev/auth-client/convex",
-    )
-    .replaceAll(
-      "../packages/better-auth-convex-client/src/convex/component.js",
+      "../packages/auth-client/src/convex/component.js",
       "@strawdev/auth-client/convex/component",
     );
   await writeFile(join(directory, fixture), packed);
@@ -107,11 +123,15 @@ execFileSync(
     join(root, "node_modules/typescript/bin/tsc"),
     "--noEmit",
     "--strict",
+    "--exactOptionalPropertyTypes",
+    "--noUncheckedIndexedAccess",
     "--skipLibCheck",
     "--target",
     "ES2022",
     "--module",
     "NodeNext",
+    "--jsx",
+    "react-jsx",
     "consumer.ts",
     ...fixtures,
   ],
@@ -135,6 +155,12 @@ for (const source of [
   });
   if (Object.keys(result.metafile.inputs).some((path) => /auth-client\/dist\/convex\//.test(path)))
     throw new Error("Client export includes backend code");
+  if (
+    Object.keys(result.metafile.inputs).some((path) =>
+      /@hookform\/resolvers\/(?!zod\/|dist\/)/.test(path),
+    )
+  )
+    throw new Error("Client export includes an unused validation integration");
   sizes.push({
     bytes: result.outputFiles[0].contents.length,
     gzip: gzipSync(result.outputFiles[0].contents).length,

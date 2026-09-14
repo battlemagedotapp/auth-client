@@ -1,5 +1,13 @@
-import type { FunctionReference } from "convex/server";
-export type Features = { organization?: boolean; sessions?: boolean };
+import type { Features } from "../signal-protocol.js";
+export type {
+  Features,
+  ResourceDependency,
+  InvalidationSnapshot,
+  InvalidationApi,
+} from "../signal-protocol.js";
+import type { InvitationSurface } from "../workflows/invitations/types.js";
+import type { OrganizationWorkflows } from "../workflows/organizations/types.js";
+import type { SessionWorkflows } from "../workflows/sessions/types.js";
 // Parameter variance bridge for Better Auth's generated generic methods.
 // Concrete endpoint signatures are retained in every consumer-facing surface.
 export type Endpoint = (...args: any[]) => Promise<unknown>;
@@ -32,26 +40,6 @@ export type SessionsClient = Record<
   "listSessions" | "revokeSession" | "revokeOtherSessions" | "revokeSessions",
   Endpoint
 >;
-export type ResourceDependency = {
-  scope: "directory" | "organization" | "profile" | "invitations" | "sessions" | "invitation";
-  subject: string;
-  organizationId?: string;
-};
-export type InvalidationSnapshot = {
-  protocol: 1;
-  features: Features;
-  userId: string;
-  denied: boolean;
-  revisions: number[];
-};
-export type InvalidationApi = {
-  signals: FunctionReference<
-    "query",
-    "public",
-    { dependencies: ResourceDependency[] },
-    InvalidationSnapshot
-  >;
-};
 type ReadPayload<R> = R extends { data: infer T; error: null }
   ? T
   : R extends { data: unknown; error: unknown }
@@ -131,6 +119,11 @@ export interface AuthDataLifecycle {
 }
 export type AuthDataClient<C extends SessionClient, F extends Features> = AuthDataLifecycle &
   (F extends { organization: true }
-    ? OrganizationSurface<C extends OrganizationClient ? C : never>
+    ? OrganizationSurface<C extends OrganizationClient ? C : never> &
+        InvitationSurface<C extends OrganizationClient ? C : never> &
+        OrganizationWorkflows<C extends OrganizationClient ? C : never>
     : unknown) &
-  (F extends { sessions: true } ? SessionSurface<C extends SessionsClient ? C : never> : unknown);
+  (F extends { sessions: true }
+    ? SessionSurface<C extends SessionsClient ? C : never> &
+        SessionWorkflows<C extends SessionsClient ? C : never>
+    : unknown);
