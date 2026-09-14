@@ -247,10 +247,18 @@ Node 24 and pnpm 12. Run `pnpm install`, then `pnpm build`. `pnpm check` covers 
 For the example:
 
 1. In `examples/backend`, run `pnpm exec convex dev` and select a separate development deployment. The checked-in generated files are refreshed by Convex.
-2. Configure deployment variables `BETTER_AUTH_SECRET`, `SITE_URL` (default example web URL `http://localhost:8099`), and `MAILBOX_URL`.
+2. Configure deployment variables `BETTER_AUTH_SECRET`, `SITE_URL` (default example web URL `http://localhost:8099`), `AUTH_EMAIL_DELIVERY=controlled`, and `MAILBOX_URL`.
 3. Run `pnpm mailbox`. The development-only sink binds localhost:8025 and stores messages in memory. A local Convex backend can use `http://127.0.0.1:8025`; a cloud deployment needs its own reachable test email delivery service.
 4. Copy the Expo `.env.example` to `.env.local` and set that deployment's client and HTTP URLs.
 5. Run root `pnpm dev`. The library, backend, and Expo watchers remain active. Run `pnpm test:e2e` against the example and mailbox.
+
+The controlled suite never depends on external delivery. The separately selected live-email
+qualification uses an isolated Convex development deployment with `AUTH_EMAIL_DELIVERY=resend`,
+`AUTH_EMAIL_FROM`, `RESEND_API_KEY`, and `RESEND_WEBHOOK_SECRET`; its Resend webhook targets
+`/resend-webhook`. Run an Expo Web client for that deployment, set
+`AUTH_CLIENT_EMAIL_BASE_URL` and `AUTH_CLIENT_EMAIL_DEPLOYMENT` locally, then run
+`pnpm test:email`. `pnpm mailbox:live` opens the development component through
+`@strawdev/resend-tui`; it is read-only.
 
 `pnpm --filter @example/expo build` exports web; `build:native` produces an Android JavaScript bundle. `android` builds the development app. Use `adb reverse` for local backend/Metro ports when testing on an emulator. Native OS permissions, storage, deep links, and lifecycle events are application responsibilities.
 

@@ -1,5 +1,23 @@
 # Verification
 
+## Live email ownership — 2026-09-14
+
+The isolated example now keeps controlled mail local and selects Convex Resend explicitly for live
+qualification. `@strawdev/resend-tui` v0.1.0 is pinned only as repository test tooling;
+`@convex-dev/resend` 0.2.7 belongs only to the example backend, not the published Auth Client
+runtime.
+
+- `pnpm verify`: 77 controlled tests, backend/example types, lint, and formatting passed.
+- `pnpm test:package`: the unchanged Auth Client runtime package installed and bundled in an
+  isolated consumer.
+- `pnpm test:e2e`: all eight local HTTP-mailbox browser journeys passed in 1 minute 24 seconds.
+- `pnpm test:email`: the delivered wrong-account, verification, rejection, acceptance, membership,
+  and canonical-completion journey passed against development deployment `uncommon-gopher-566` in
+  45 seconds.
+
+Auth Client owns the detailed authentication journey. Gaia retains only its template, route,
+presentation, cleanup, and application-handoff checks; `resend-tui` owns component mailbox behavior.
+
 ## v0.3.0 — 2026-09-14
 
 The implementation qualified as `v0.3.0-rc.1` (source `d12c8936f605dca96bdefb44f9434dfbfaaa72f1`). Stable changes only the version and documentation.

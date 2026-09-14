@@ -8,7 +8,7 @@ import { prepareRelease } from "./release-package.mjs";
 const root = resolve(".");
 const directory = await mkdtemp(join(tmpdir(), "reactive-auth-package-"));
 if (!process.env.AUTH_CLIENT_GIT_SOURCE) {
-  const release = await prepareRelease();
+  const release = await prepareRelease({ parentDirectory: directory });
   execFileSync("pnpm", ["--dir", release.directory, "pack", "--pack-destination", directory], {
     cwd: root,
     stdio: "pipe",

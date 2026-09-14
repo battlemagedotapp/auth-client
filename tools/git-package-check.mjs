@@ -1,4 +1,5 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -7,7 +8,8 @@ import { prepareRelease } from "./release-package.mjs";
 
 // Only the temporary distribution fixture gets commits and tags.
 const root = resolve(".");
-const { directory: repository } = await prepareRelease();
+const fixtureDirectory = await mkdtemp(join(tmpdir(), "auth-client-git-package-"));
+const { directory: repository } = await prepareRelease({ parentDirectory: fixtureDirectory });
 const git = (...args) =>
   execFileSync("git", args, { cwd: repository, encoding: "utf8", stdio: "pipe" });
 git("init", "--quiet");
