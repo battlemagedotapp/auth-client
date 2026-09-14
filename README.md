@@ -2,7 +2,7 @@
 
 `@strawdev/auth-client` supplies presentation-neutral organization, member, invitation, and session workflows around your existing Better Auth client backed by Convex. Better Auth HTTP endpoints own reads/writes, a private TanStack Query cache observes them, and authenticated Convex revision queries provide freshness.
 
-The v0.3.0-rc.1 contract below is a qualification candidate; the v0.2.0 release has the previous workflow API. Authentication, navigation, styling, and product policy remain application-owned.
+The v0.3.0 contract below replaces the previous workflow API. Authentication, navigation, styling, and product policy remain application-owned.
 
 ## Setup
 
@@ -228,10 +228,10 @@ The workflows replace supported-domain form state, action readiness, conflict gu
 
 ## Installation
 
-Install the precompiled candidate after its Release workflow completes:
+Install the precompiled release:
 
 ```sh
-pnpm add '@strawdev/auth-client@github:battlemagedotapp/auth-client#v0.3.0-rc.1'
+pnpm add '@strawdev/auth-client@github:battlemagedotapp/auth-client#v0.3.0'
 ```
 
 Release tags contain the ready-to-use package at the repository root: JavaScript, declarations, and source maps. Installation does not compile this library, install its development tooling, or require permission to run its build scripts. The application still bundles normally and supplies the documented peer dependencies and authentication/backend configuration.
