@@ -1,7 +1,7 @@
 import { type GenericMutationCtx, type GenericQueryCtx, type GenericDataModel, type FunctionReference, type ApiFromModules, type SchemaDefinition, type GenericSchema, type FunctionArgs, type FunctionReturnType } from "convex/server";
 import type { Triggers } from "@convex-dev/better-auth";
 import type { lookup as componentLookup } from "./component.js";
-import type { Features, ResourceDependency } from "../types.js";
+import type { Features, ResourceDependency } from "../signal-protocol.js";
 export declare const authSignalTables: {
     authSignals: import("convex/server").TableDefinition<import("convex/values").VObject<{
         scope: "directory" | "organization" | "profile" | "invitations" | "sessions" | "invitation";

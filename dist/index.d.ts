@@ -1,17 +1,8 @@
-import { type ReactNode } from "react";
-import type { Features, SessionClient, OrganizationClient, SessionsClient, AuthDataClient, AuthDataLifecycle, InvalidationApi } from "./types.js";
-export type * from "./types.js";
-export declare function AuthDataProvider({ client, children, }: {
-    client: AuthDataLifecycle;
-    children: ReactNode;
-}): import("react/jsx-runtime").JSX.Element;
-export declare function createAuthDataClient<C extends SessionClient, F extends Features>(config: {
-    authClient: C & (F extends {
-        organization: true;
-    } ? OrganizationClient : unknown) & (F extends {
-        sessions: true;
-    } ? SessionsClient : unknown);
-    api: InvalidationApi;
-    features: F;
-}): AuthDataClient<C, F>;
+export { createAuthDataClient } from "./client/create-client.js";
+export { AuthDataProvider } from "./client/provider.js";
+export type * from "./client/types.js";
+export type * from "./workflows/invitations/types.js";
+export type * from "./workflows/shared/types.js";
+export type * from "./workflows/organizations/types.js";
+export type * from "./workflows/sessions/types.js";
 //# sourceMappingURL=index.d.ts.map

@@ -1,0 +1,100 @@
+import type { Features } from "../signal-protocol.js";
+export type { Features, ResourceDependency, InvalidationSnapshot, InvalidationApi, } from "../signal-protocol.js";
+import type { InvitationSurface } from "../workflows/invitations/types.js";
+import type { OrganizationWorkflows } from "../workflows/organizations/types.js";
+import type { SessionWorkflows } from "../workflows/sessions/types.js";
+export type Endpoint = (...args: any[]) => Promise<unknown>;
+export interface SessionClient {
+    useSession(): {
+        data: {
+            user: {
+                id: string;
+            };
+            session: {
+                id: string;
+            };
+        } | null;
+        isPending: boolean;
+    };
+}
+export type OrganizationMethods = "list" | "getFullOrganization" | "listMembers" | "getActiveMemberRole" | "listInvitations" | "listUserInvitations" | "getInvitation" | "create" | "update" | "delete" | "leave" | "inviteMember" | "cancelInvitation" | "acceptInvitation" | "rejectInvitation" | "removeMember" | "updateMemberRole";
+export type OrganizationClient = {
+    organization: Record<OrganizationMethods, Endpoint>;
+};
+export type SessionsClient = Record<"listSessions" | "revokeSession" | "revokeOtherSessions" | "revokeSessions", Endpoint>;
+type ReadPayload<R> = R extends {
+    data: infer T;
+    error: null;
+} ? T : R extends {
+    data: unknown;
+    error: unknown;
+} ? never : R;
+export type Data<E extends Endpoint> = E extends (...args: infer _Args) => Promise<infer R> ? ReadPayload<R> : never;
+export type Query<E extends Endpoint> = NonNullable<Parameters<E>[0]> extends {
+    query?: infer Q;
+} ? NonNullable<Q> : Record<string, never>;
+export type RefetchResult<T> = {
+    data: T | undefined;
+    error: unknown;
+};
+export type Result<T> = {
+    data: T | undefined;
+    error: unknown;
+    isPending: boolean;
+    isFetching: boolean;
+    refetch(): Promise<RefetchResult<T> | undefined>;
+};
+export type Hook<E extends Endpoint> = (query?: Query<E>, options?: {
+    enabled?: boolean;
+}) => Result<Data<E>>;
+export type OrganizationSurface<C extends OrganizationClient> = {
+    useListOrganizations: Hook<C["organization"]["list"]>;
+    useOrganization: (query: Query<C["organization"]["getFullOrganization"]> & ({
+        organizationId: string;
+        organizationSlug?: never;
+    } | {
+        organizationSlug: string;
+        organizationId?: never;
+    }), options?: {
+        enabled?: boolean;
+    }) => Result<Data<C["organization"]["getFullOrganization"]>>;
+    useListMembers: (query: Query<C["organization"]["listMembers"]> & {
+        organizationId: string;
+    }, options?: {
+        enabled?: boolean;
+    }) => Result<Data<C["organization"]["listMembers"]>>;
+    useMemberRole: (query: Query<C["organization"]["getActiveMemberRole"]> & ({
+        organizationId: string;
+    } | {
+        organizationSlug: string;
+    }), options?: {
+        enabled?: boolean;
+    }) => Result<Data<C["organization"]["getActiveMemberRole"]>>;
+    useListInvitations: (query: Query<C["organization"]["listInvitations"]> & {
+        organizationId: string;
+    }, options?: {
+        enabled?: boolean;
+    }) => Result<Data<C["organization"]["listInvitations"]>>;
+    useListUserInvitations: Hook<C["organization"]["listUserInvitations"]>;
+    useInvitation: (query: Query<C["organization"]["getInvitation"]> & {
+        id: string;
+    }, options?: {
+        enabled?: boolean;
+    }) => Result<Data<C["organization"]["getInvitation"]>>;
+    organization: Pick<C["organization"], "create" | "update" | "delete" | "leave" | "inviteMember" | "cancelInvitation" | "acceptInvitation" | "rejectInvitation" | "removeMember" | "updateMemberRole">;
+};
+export type SessionSurface<C extends SessionsClient> = Pick<C, "revokeSession" | "revokeOtherSessions" | "revokeSessions"> & {
+    useListSessions: Hook<C["listSessions"]>;
+};
+declare const authDataClientBrand: unique symbol;
+export interface AuthDataLifecycle {
+    readonly [authDataClientBrand]: true;
+    refresh(): Promise<void>;
+    dispose(): void;
+}
+export type AuthDataClient<C extends SessionClient, F extends Features> = AuthDataLifecycle & (F extends {
+    organization: true;
+} ? OrganizationSurface<C extends OrganizationClient ? C : never> & InvitationSurface<C extends OrganizationClient ? C : never> & OrganizationWorkflows<C extends OrganizationClient ? C : never> : unknown) & (F extends {
+    sessions: true;
+} ? SessionSurface<C extends SessionsClient ? C : never> & SessionWorkflows<C extends SessionsClient ? C : never> : unknown);
+//# sourceMappingURL=types.d.ts.map
