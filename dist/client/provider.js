@@ -14,7 +14,22 @@ export function AuthDataProvider({ client, children, }) {
     const ready = auth.isAuthenticated && !session.isPending && Boolean(session.data);
     const identity = useMemo(() => ({ userId, sessionId, ready }), [userId, sessionId, ready]);
     useLayoutEffect(() => runtime.attach(convex), [runtime, convex]);
-    useLayoutEffect(() => runtime.setIdentity(identity), [runtime, identity]);
+    useLayoutEffect(() => runtime.observeAuth({
+        ...identity,
+        sessionToken: session.data?.session.token,
+        sessionPending: session.isPending,
+        convexAuthenticated: auth.isAuthenticated,
+        convexLoading: auth.isLoading,
+    }, session.refetch, session.data), [
+        runtime,
+        identity,
+        session.data,
+        session.data?.session.token,
+        session.isPending,
+        session.refetch,
+        auth.isAuthenticated,
+        auth.isLoading,
+    ]);
     return (_jsx(AuthDataContext.Provider, { value: { runtime, identity }, children: children }));
 }
 //# sourceMappingURL=provider.js.map

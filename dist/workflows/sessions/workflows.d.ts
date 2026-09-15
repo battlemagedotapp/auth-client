@@ -46,6 +46,7 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         };
         currentSession: {
             id: string;
+            token?: string;
         } | undefined;
         currentSessionId: string | undefined;
         needsFreshSession: boolean;
@@ -96,6 +97,7 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         };
         currentSession: {
             id: string;
+            token?: string;
         } | undefined;
         currentSessionId: string | undefined;
         needsFreshSession: boolean;

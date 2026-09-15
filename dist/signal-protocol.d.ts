@@ -3,6 +3,8 @@ import type { FunctionReference } from "convex/server";
 export type Features = {
     organization?: boolean;
     sessions?: boolean;
+    authentication?: boolean;
+    account?: boolean;
 };
 export type ResourceDependency = {
     scope: "directory" | "organization" | "profile" | "invitations" | "sessions" | "invitation";

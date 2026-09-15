@@ -1,5 +1,5 @@
 export type WorkflowError = {
-    phase: "validation" | "preparation" | "write" | "synchronization" | "callback";
+    phase: "validation" | "preparation" | "write" | "synchronization" | "cleanup" | "callback";
     cause: unknown;
     writeSucceeded: boolean;
 };
@@ -34,7 +34,7 @@ export type WorkflowFeedback = {
 export type WorkflowFeedbackOptions = {
     onError?: (feedback: Omit<WorkflowFeedback, "recovery">) => void;
 };
-export type WorkflowOperation = "select" | "create" | "update" | "leave" | "delete" | "invite" | "resend" | "accept" | "reject" | "cancel" | "updateMemberRole" | "removeMember" | "revokeSession" | "revokeOtherSessions" | "revokeSessions";
+export type WorkflowOperation = "select" | "create" | "update" | "leave" | "delete" | "invite" | "resend" | "accept" | "reject" | "cancel" | "updateMemberRole" | "removeMember" | "revokeSession" | "revokeOtherSessions" | "revokeSessions" | "signIn" | "signUp" | "requestPasswordReset" | "resetPassword" | "sendVerificationEmail" | "updateProfile" | "updateProfileImage" | "changeEmail" | "changePassword" | "reauthenticate" | "signOut";
 export type WorkflowPendingAction = {
     operation: WorkflowOperation;
     organizationId?: string;
@@ -74,6 +74,7 @@ export type WorkflowForm<V, R> = WorkflowActionState & {
     validationError: FormValidationIssue | null;
     isDirty: boolean;
     isValidating: boolean;
+    hasServerChanges: boolean;
     field<K extends keyof V>(this: void, name: K): {
         name: K;
         value: V[K];

@@ -219,39 +219,48 @@ export function useWorkflowForm(options, action, execution) {
             },
         };
     }
-    function submit() {
+    async function submit() {
         if (latestExecution.current.blocked)
-            return Promise.resolve({ status: "ignored", reason: "unavailable" });
+            return { status: "ignored", reason: "unavailable" };
         const draft = decodeValues(getValues());
-        return action.run({
-            operation: execution.operation,
-            ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
-        }, async (transaction) => {
-            transaction.phase("validation");
-            let result;
-            let invalid;
-            await handleSubmit(async (submitted) => {
-                if (!transaction.current())
-                    throw new Error("Obsolete form validation");
-                transaction.phase("write");
-                result = await latestExecution.current.write(submitted, transaction);
+        try {
+            return await action.run({
+                operation: execution.operation,
+                ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
+            }, async (transaction) => {
+                transaction.phase("validation");
+                let result;
+                let invalid;
+                await handleSubmit(async (submitted) => {
+                    if (!transaction.current())
+                        throw new Error("Obsolete form validation");
+                    transaction.phase("write");
+                    result = await latestExecution.current.write(submitted, transaction);
+                    if (!transaction.current())
+                        throw new Error("Obsolete form submission");
+                }, (failures) => {
+                    invalid = failures;
+                })();
+                if (invalid)
+                    throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
                 if (!transaction.current())
                     throw new Error("Obsolete form submission");
-            }, (failures) => {
-                invalid = failures;
-            })();
-            if (invalid)
-                throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
-            if (!transaction.current())
-                throw new Error("Obsolete form submission");
-            if (execution.resetToDraft) {
-                clearValidation();
-                resetForm({ ...encodeValues(draft), owner: action.owner });
+                if (execution.resetToDraft) {
+                    clearValidation();
+                    resetForm({ ...encodeValues(draft), owner: action.owner });
+                }
+                else
+                    replaceDefaults();
+                return execution.complete ? execution.complete(result, transaction) : result;
+            });
+        }
+        finally {
+            for (const name of execution.secretFields ?? []) {
+                const key = encode(name);
+                if (key in getValues())
+                    setValue(key, "", { shouldDirty: false });
             }
-            else
-                replaceDefaults();
-            return execution.complete ? execution.complete(result, transaction) : result;
-        });
+        }
     }
     return {
         actions: {

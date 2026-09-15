@@ -29,11 +29,11 @@ export function getActionState(action) {
     return {
         feedback: action.feedback(),
         diagnostics: { pendingAction: action.pendingAction, error: action.error },
-        reset: action.reset,
+        reset: () => action.reset(),
     };
 }
 // Recovery already presents its operation's error; don't render it a second time.
-function operationFeedback(state, recoveries) {
+export function operationFeedback(state, recoveries) {
     if (!state?.error || !state.target)
         return recoveries;
     const { target, error } = state;
@@ -43,6 +43,19 @@ function operationFeedback(state, recoveries) {
     return represented
         ? recoveries
         : [...recoveries, { target, error: error.cause, diagnostics: error, recovery: null }];
+}
+export function actionControl(available, pending, target, conflicts, reason) {
+    const disabledReason = !available
+        ? { code: "disabled" }
+        : pending != null || conflicts
+            ? { code: "busy" }
+            : reason;
+    return {
+        isDisabled: disabledReason !== null,
+        isPending: pending != null &&
+            Object.entries(target).every(([key, value]) => pending[key] === value),
+        disabledReason,
+    };
 }
 /** TanStack observes writes; this coordinator owns only locks and guarded continuations. */
 export function useWorkflowAction(runtime, scope, enabled = true, options = {}) {
@@ -195,17 +208,7 @@ export function useWorkflowAction(runtime, scope, enabled = true, options = {}) 
     }
     const visible = available && feedback?.owner === owner ? feedback : undefined;
     function control(target, reason = null) {
-        const disabledReason = !available
-            ? { code: "disabled" }
-            : visible?.pending != null || locks.conflicts(target, runtime.generation)
-                ? { code: "busy" }
-                : reason;
-        return {
-            isDisabled: disabledReason !== null,
-            isPending: visible?.pending != null &&
-                Object.entries(target).every(([key, value]) => visible.pending?.[key] === value),
-            disabledReason,
-        };
+        return actionControl(available, visible?.pending, target, locks.conflicts(target, runtime.generation), reason);
     }
     return {
         control,

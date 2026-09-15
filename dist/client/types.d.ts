@@ -1,22 +1,44 @@
-import type { Features } from "../signal-protocol.js";
+import type { Features, InvalidationApi } from "../signal-protocol.js";
 export type { Features, ResourceDependency, InvalidationSnapshot, InvalidationApi, } from "../signal-protocol.js";
 import type { InvitationSurface } from "../workflows/invitations/types.js";
 import type { OrganizationWorkflows } from "../workflows/organizations/types.js";
 import type { SessionWorkflows } from "../workflows/sessions/types.js";
+import type { AuthenticationWorkflows } from "../workflows/authentication/types.js";
+import type { AccountWorkflows, CurrentUserBinding } from "../workflows/account/types.js";
 export type Endpoint = (...args: any[]) => Promise<unknown>;
 export interface SessionClient {
     useSession(): {
         data: {
             user: {
                 id: string;
+                email?: string;
             };
             session: {
                 id: string;
+                token?: string;
             };
         } | null;
         isPending: boolean;
+        refetch?: () => Promise<unknown>;
     };
 }
+export type AuthenticationClient = SessionClient & {
+    signIn: {
+        email: Endpoint;
+    };
+    signUp: {
+        email: Endpoint;
+    };
+    requestPasswordReset: Endpoint;
+    resetPassword: Endpoint;
+    sendVerificationEmail: Endpoint;
+    signOut: Endpoint;
+};
+export type AccountClient = AuthenticationClient & SessionsClient & {
+    updateUser: Endpoint;
+    changeEmail: Endpoint;
+    changePassword: Endpoint;
+};
 export type OrganizationMethods = "list" | "getFullOrganization" | "listMembers" | "getActiveMemberRole" | "listInvitations" | "listUserInvitations" | "getInvitation" | "create" | "update" | "delete" | "leave" | "inviteMember" | "cancelInvitation" | "acceptInvitation" | "rejectInvitation" | "removeMember" | "updateMemberRole";
 export type OrganizationClient = {
     organization: Record<OrganizationMethods, Endpoint>;
@@ -92,9 +114,36 @@ export interface AuthDataLifecycle {
     refresh(): Promise<void>;
     dispose(): void;
 }
-export type AuthDataClient<C extends SessionClient, F extends Features> = AuthDataLifecycle & (F extends {
+export type AuthDataClient<C extends SessionClient, F extends Features, U extends {
+    email: string;
+} = never> = AuthDataLifecycle & (F extends {
     organization: true;
 } ? OrganizationSurface<C extends OrganizationClient ? C : never> & InvitationSurface<C extends OrganizationClient ? C : never> & OrganizationWorkflows<C extends OrganizationClient ? C : never> : unknown) & (F extends {
     sessions: true;
-} ? SessionSurface<C extends SessionsClient ? C : never> & SessionWorkflows<C extends SessionsClient ? C : never> : unknown);
+} ? SessionSurface<C extends SessionsClient ? C : never> & SessionWorkflows<C extends SessionsClient ? C : never> : unknown) & (F extends {
+    authentication: true;
+} ? AuthenticationWorkflows<C extends AuthenticationClient ? C : never> : unknown) & (F extends {
+    account: true;
+} ? AccountWorkflows<C extends AccountClient ? C : never, U> : unknown);
+export type AuthDataClientConfig<C extends SessionClient, F extends Features, U extends {
+    email: string;
+}> = {
+    authClient: C & (F extends {
+        organization: true;
+    } ? OrganizationClient : unknown) & (F extends {
+        sessions: true;
+    } ? SessionsClient : unknown) & (F extends {
+        authentication: true;
+    } ? AuthenticationClient : unknown) & (F extends {
+        account: true;
+    } ? AccountClient : unknown);
+    api: InvalidationApi;
+    features: F;
+} & (F extends {
+    account: true;
+} ? {
+    currentUser: CurrentUserBinding<U>;
+} : {
+    currentUser?: never;
+});
 //# sourceMappingURL=types.d.ts.map

@@ -1,6 +1,25 @@
 function targets(action, generation) {
     const result = [];
-    const add = (kind, id, exclusive = true) => result.push({ key: JSON.stringify([generation, kind, id]), exclusive });
+    const add = (kind, id, exclusive = true, stable = false) => result.push({ key: JSON.stringify([stable ? "runtime" : generation, kind, id]), exclusive });
+    const identityTransition = [
+        "signIn",
+        "signUp",
+        "resetPassword",
+        "reauthenticate",
+        "signOut",
+    ].includes(action.operation);
+    add("identity", "current", identityTransition, true);
+    if ([
+        "updateProfile",
+        "updateProfileImage",
+        "changeEmail",
+        "changePassword",
+        "reauthenticate",
+        "revokeSession",
+        "revokeOtherSessions",
+        "revokeSessions",
+    ].includes(action.operation))
+        add("account", "current", true, true);
     if (action.organizationId)
         add("organization", action.organizationId, action.operation === "delete" || action.operation === "leave");
     if (action.invitationId)

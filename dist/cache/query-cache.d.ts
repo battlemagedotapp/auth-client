@@ -6,6 +6,12 @@ export type Identity = {
     sessionId?: string;
     ready: boolean;
 };
+export type AuthObservation = Identity & {
+    sessionToken?: string;
+    sessionPending: boolean;
+    convexAuthenticated: boolean;
+    convexLoading: boolean;
+};
 export declare class CacheRuntime {
     readonly auth: SessionClient;
     readonly api: InvalidationApi;
@@ -19,6 +25,12 @@ export declare class CacheRuntime {
     identity: string;
     generation: number;
     attached: number;
+    attachmentRevision: number;
+    authObservation: AuthObservation;
+    authSession: unknown;
+    private authRevision;
+    private authListeners;
+    private sessionRefetch?;
     timers: Set<number>;
     private deadlines;
     observeExpiry(key: QueryKey, expiry: number): () => void;
@@ -40,6 +52,11 @@ export declare class CacheRuntime {
     }>;
     constructor(auth: SessionClient, api: InvalidationApi, features: Features);
     attach(convex: ConvexReactClient): () => void;
+    subscribeAuth: (listener: () => void) => () => void;
+    getAuthRevision: () => number;
+    observeAuth(observation: AuthObservation, refetch?: () => Promise<unknown>, session?: unknown): void;
+    refreshSession(): Promise<void>;
+    waitForAuth(predicate: (observation: AuthObservation) => boolean, signal: AbortSignal, timeout?: number, rejectWhen?: (observation: AuthObservation) => unknown): Promise<AuthObservation>;
     setIdentity(identity: Identity): void;
     watch(deps: ResourceDependency[], listener: (error: unknown, denied: boolean) => void): () => void;
     refresh(): Promise<void>;

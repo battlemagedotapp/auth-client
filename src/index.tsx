@@ -6,3 +6,5 @@ export type * from "./workflows/shared/types.js";
 export type { WorkflowDefinition } from "./workflows/shared/root.js";
 export type * from "./workflows/organizations/types.js";
 export type * from "./workflows/sessions/types.js";
+export type * from "./workflows/authentication/types.js";
+export type * from "./workflows/account/types.js";

@@ -4,6 +4,8 @@ import { runtimeByClient } from "./provider-context.js";
 import { createInvitationWorkflows, } from "../workflows/invitations/workflows.js";
 import { createOrganizationWorkflows, } from "../workflows/organizations/workflows.js";
 import { createSessionWorkflows } from "../workflows/sessions/workflows.js";
+import { createAuthenticationWorkflows } from "../workflows/authentication/workflows.js";
+import { createAccountWorkflows } from "../workflows/account/workflows.js";
 export function createAuthDataClient(config) {
     const runtime = new CacheRuntime(config.authClient, config.api, Object.freeze({ ...config.features }));
     const client = {
@@ -65,6 +67,10 @@ export function createAuthDataClient(config) {
         Object.assign(client, createInvitationWorkflows(client, runtime), createOrganizationWorkflows(client, runtime));
     if (config.features.sessions)
         Object.assign(client, createSessionWorkflows(client, runtime));
+    if (config.features.authentication)
+        Object.assign(client, createAuthenticationWorkflows(auth, runtime));
+    if (config.features.account)
+        Object.assign(client, createAccountWorkflows(auth, runtime, config.currentUser));
     runtimeByClient.set(client, runtime);
     // Only the explicitly selected capabilities are assembled above. TypeScript
     // cannot narrow generic F from runtime booleans; retain C's exact signatures.

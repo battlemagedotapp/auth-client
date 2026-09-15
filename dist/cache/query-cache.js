@@ -28,6 +28,17 @@ export class CacheRuntime {
     identity = "";
     generation = 0;
     attached = 0;
+    attachmentRevision = 0;
+    authObservation = {
+        ready: false,
+        sessionPending: true,
+        convexAuthenticated: false,
+        convexLoading: true,
+    };
+    authSession = null;
+    authRevision = 0;
+    authListeners = new Set();
+    sessionRefetch;
     timers = new Set();
     deadlines = new Map();
     observeExpiry(key, expiry) {
@@ -154,14 +165,74 @@ export class CacheRuntime {
         }
         this.convex = convex;
         this.attached++;
+        this.attachmentRevision++;
         return () => {
             if (--this.attached === 0) {
+                this.attachmentRevision++;
                 for (const w of this.watches.values())
                     w.stop();
                 this.watches.clear();
                 void this.cache.cancelQueries();
             }
         };
+    }
+    subscribeAuth = (listener) => {
+        this.authListeners.add(listener);
+        return () => {
+            this.authListeners.delete(listener);
+        };
+    };
+    getAuthRevision = () => this.authRevision;
+    observeAuth(observation, refetch, session) {
+        this.sessionRefetch = refetch;
+        this.authSession = session;
+        const changed = JSON.stringify(this.authObservation) !== JSON.stringify(observation);
+        this.authObservation = observation;
+        this.setIdentity(observation);
+        if (changed) {
+            this.authRevision++;
+            for (const listener of this.authListeners)
+                listener();
+        }
+    }
+    async refreshSession() {
+        if (!this.sessionRefetch)
+            throw new Error("The configured session hook cannot be refreshed");
+        const result = await this.sessionRefetch();
+        if (result && typeof result === "object" && "error" in result && result.error)
+            throw result.error;
+    }
+    waitForAuth(predicate, signal, timeout = 10_000, rejectWhen) {
+        if (signal.aborted)
+            return Promise.reject(new DOMException("Authentication synchronization was cancelled", "AbortError"));
+        if (predicate(this.authObservation))
+            return Promise.resolve(this.authObservation);
+        const initialFailure = rejectWhen?.(this.authObservation);
+        if (initialFailure !== undefined)
+            return Promise.reject(initialFailure);
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => finish(new Error("Authentication synchronization timed out")), timeout);
+            const unsubscribe = this.subscribeAuth(() => {
+                if (predicate(this.authObservation))
+                    finish(null, this.authObservation);
+                else {
+                    const failure = rejectWhen?.(this.authObservation);
+                    if (failure !== undefined)
+                        finish(failure);
+                }
+            });
+            const abort = () => finish(new DOMException("Authentication synchronization was cancelled", "AbortError"));
+            const finish = (error, value) => {
+                clearTimeout(timer);
+                unsubscribe();
+                signal.removeEventListener("abort", abort);
+                if (error)
+                    reject(error);
+                else
+                    resolve(value);
+            };
+            signal.addEventListener("abort", abort, { once: true });
+        });
     }
     setIdentity(identity) {
         const key = JSON.stringify(identity);
@@ -281,6 +352,10 @@ export class CacheRuntime {
         this.watches.clear();
         void this.cache.cancelQueries();
         this.cache.clear();
+        this.authRevision++;
+        for (const listener of this.authListeners)
+            listener();
+        this.authListeners.clear();
     }
 }
 //# sourceMappingURL=query-cache.js.map

@@ -2,7 +2,7 @@ import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { useForm, useWatch, type FieldErrors, type ResolverResult } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NEVER, record, string, unknown, type ZodType } from "zod";
-import { useCommittedRef, type useWorkflowAction, type ActionExecution } from "./action.js";
+import { useCommittedRef, type ActionExecution, type WorkflowActionController } from "./action.js";
 import { hashKey } from "@tanstack/react-query";
 import type { FormFieldErrors, FormFieldIssue } from "./types.js";
 import type { WorkflowOperation } from "./types.js";
@@ -28,6 +28,7 @@ type Execution = {
   syncDefaults?: boolean;
   blocked?: boolean;
   disabledReason?: WorkflowDisabledReason | null;
+  secretFields?: readonly string[];
 };
 // RHF treats dots/brackets as paths. Encode literal Better Auth field names.
 const encode = (name: string) =>
@@ -84,7 +85,7 @@ const emptyResolution = (): Resolution => ({ values: {}, errors: {} });
 /** RHF is the only owner of editable values and field feedback. */
 export function useWorkflowForm(
   options: FormOptions,
-  action: ReturnType<typeof useWorkflowAction>,
+  action: WorkflowActionController,
   execution: Execution,
 ) {
   const defaults = () => ({
@@ -270,39 +271,46 @@ export function useWorkflowForm(
       },
     };
   }
-  function submit() {
+  async function submit() {
     if (latestExecution.current.blocked)
-      return Promise.resolve({ status: "ignored" as const, reason: "unavailable" as const });
+      return { status: "ignored" as const, reason: "unavailable" as const };
     const draft = decodeValues(getValues());
-    return action.run(
-      {
-        operation: execution.operation,
-        ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
-      },
-      async (transaction) => {
-        transaction.phase("validation");
-        let result: unknown;
-        let invalid: FieldErrors<Values> | undefined;
-        await handleSubmit(
-          async (submitted) => {
-            if (!transaction.current()) throw new Error("Obsolete form validation");
-            transaction.phase("write");
-            result = await latestExecution.current.write(submitted, transaction);
-            if (!transaction.current()) throw new Error("Obsolete form submission");
-          },
-          (failures) => {
-            invalid = failures;
-          },
-        )();
-        if (invalid) throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
-        if (!transaction.current()) throw new Error("Obsolete form submission");
-        if (execution.resetToDraft) {
-          clearValidation();
-          resetForm({ ...encodeValues(draft), owner: action.owner });
-        } else replaceDefaults();
-        return execution.complete ? execution.complete(result, transaction) : result;
-      },
-    );
+    try {
+      return await action.run(
+        {
+          operation: execution.operation,
+          ...(execution.organizationId ? { organizationId: execution.organizationId } : {}),
+        },
+        async (transaction) => {
+          transaction.phase("validation");
+          let result: unknown;
+          let invalid: FieldErrors<Values> | undefined;
+          await handleSubmit(
+            async (submitted) => {
+              if (!transaction.current()) throw new Error("Obsolete form validation");
+              transaction.phase("write");
+              result = await latestExecution.current.write(submitted, transaction);
+              if (!transaction.current()) throw new Error("Obsolete form submission");
+            },
+            (failures) => {
+              invalid = failures;
+            },
+          )();
+          if (invalid) throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
+          if (!transaction.current()) throw new Error("Obsolete form submission");
+          if (execution.resetToDraft) {
+            clearValidation();
+            resetForm({ ...encodeValues(draft), owner: action.owner });
+          } else replaceDefaults();
+          return execution.complete ? execution.complete(result, transaction) : result;
+        },
+      );
+    } finally {
+      for (const name of execution.secretFields ?? []) {
+        const key = encode(name);
+        if (key in getValues()) setValue(key, "", { shouldDirty: false });
+      }
+    }
   }
   return {
     actions: {
