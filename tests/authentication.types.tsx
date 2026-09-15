@@ -65,6 +65,31 @@ const Email = client.defineEmailChangeForm(
 );
 <Email.Root initialValues={{ email: "" }} callbackURL="https://example.com/account" />;
 
+client.useProfileSettings({
+  schema: z
+    .object({ displayName: z.string() })
+    .transform(({ displayName }) => ({ name: displayName })),
+  getInitialValues: (user) => ({ displayName: user.name }),
+});
+client.useEmailChangeForm({
+  schema: z.object({ email: z.email() }).transform(({ email }) => ({ newEmail: email })),
+  initialValues: { email: "" },
+  callbackURL: "https://example.com/account",
+});
+client.usePasswordChangeForm({
+  schema: z
+    .object({ currentPassword: z.string(), password: z.string(), confirmation: z.string() })
+    .transform(({ currentPassword, password }) => ({ currentPassword, newPassword: password })),
+  initialValues: { currentPassword: "", password: "", confirmation: "" },
+  revokeOtherSessions: true,
+});
+client.useReauthenticationForm({
+  schema: z
+    .object({ password: z.string(), confirmation: z.literal("yes") })
+    .transform(({ password }) => ({ password })),
+  initialValues: { password: "", confirmation: "yes" },
+});
+
 client.usePasswordChangeForm({
   initialValues: { currentPassword: "", newPassword: "" },
   revokeOtherSessions: true,

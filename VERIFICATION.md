@@ -9,7 +9,7 @@ identity-checked reactive current-user projection for profile synchronization.
 
 - `pnpm verify`: 88 controlled tests, type contracts, backend/example checks, lint, and formatting.
 - `pnpm test:package` and `pnpm test:git`: compiled imports, declarations, backend separation, and
-  compilation-free `v0.4.0-rc.1` candidate installation passed.
+  compilation-free `v0.4.0-rc.2` candidate installation passed.
 - `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 18 seconds.
 - Live email qualification covers delivered registration verification, password reset, two-step
   email change, and the existing invitation verification/acceptance flow. Its result is recorded
