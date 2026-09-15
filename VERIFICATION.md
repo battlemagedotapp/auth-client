@@ -1,11 +1,13 @@
 # Verification
 
-## v0.4.2-rc.1 — 2026-09-15
+## v0.4.2 — 2026-09-15
 
 Profile workflows now include active writes in their aggregate pending state, and direct profile
 and sign-out actions enforce the same recovery restriction exposed by their action handles. Focused
 controlled coverage proves modal-containment state and prevents successful primary writes from
-being repeated while read-only recovery is pending.
+being repeated while read-only recovery is pending. The release workflow passed controlled tests,
+static checks, and compiled package and Git installation checks. Gaia's root check and 44 affected
+deterministic tests passed against `v0.4.2-rc.1`; stable `v0.4.2` contains the same implementation.
 
 ## v0.4.1 — 2026-09-15
 
