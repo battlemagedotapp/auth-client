@@ -1,13 +1,15 @@
 # Verification
 
-## v0.4.1-rc.1 — 2026-09-15
+## v0.4.1 — 2026-09-15
 
 Workflow state now exposes aggregate `isPending` for presentation-level containment such as modal
 dismissal. It is derived from the same action controller as individual action handles, keeping
 ordinary consumers out of diagnostic pending-action metadata. The existing duplicate-submission
 test now proves both aggregate and action-specific pending state. `pnpm check` and all 89 controlled
-tests, package installation, Git installation, and all eight isolated browser journeys pass. Gaia
-consumer qualification is recorded before the stable tag is published.
+tests, package installation, Git installation, and all eight isolated browser journeys pass. Gaia's
+affected static and deterministic checks passed against `v0.4.1-rc.1`; its six focused account and
+workspace browser journeys passed in 1 minute 30 seconds. Stable `v0.4.1` contains that candidate
+unchanged except for version and release documentation.
 
 ## v0.4.0 — 2026-09-15
 
