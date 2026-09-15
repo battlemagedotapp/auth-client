@@ -439,7 +439,7 @@ The adapter replaces query keys/options, auth cache invalidation metadata, and s
 Install the precompiled release:
 
 ```sh
-pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.3.1-rc.1'
+pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.3.1'
 ```
 
 Release tags contain the ready-to-use package at the repository root: JavaScript, declarations, and source maps. Installation does not compile this library, install its development tooling, or require permission to run its build scripts. The application still bundles normally and supplies the documented peer dependencies and authentication/backend configuration.
