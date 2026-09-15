@@ -30,8 +30,8 @@ function updateFixture(
 }
 async function signUp(page: Page, email: string) {
   await page.goto("/");
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password", { exact: true }).fill("Example-password-123!");
+  await page.getByLabel("Sign-up email", { exact: true }).fill(email);
+  await page.getByLabel("Sign-up password", { exact: true }).fill("Example-password-123!");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   let url = "";
   await expect
@@ -46,12 +46,15 @@ async function signUp(page: Page, email: string) {
     .toBeTruthy();
   await page.goto(url);
   await page.goto("/");
-  if (await page.getByLabel("Email", { exact: true }).isVisible()) {
-    await page.getByLabel("Email", { exact: true }).fill(email);
+  const signOut = page.getByRole("button", { name: "Sign out", exact: true });
+  const signInEmail = page.getByLabel("Email", { exact: true });
+  await expect(signOut.or(signInEmail)).toBeVisible();
+  if (await signInEmail.isVisible()) {
+    await signInEmail.fill(email);
     await page.getByLabel("Password", { exact: true }).fill("Example-password-123!");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   }
-  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(signOut).toBeVisible();
 }
 
 test("failed deletion and failed completion refresh do not navigate or repeat the write", async ({

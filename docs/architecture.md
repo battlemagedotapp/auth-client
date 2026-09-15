@@ -18,9 +18,12 @@ src/
   workflows/
     shared/
       action.ts                    Action readiness, guarded completion and feedback
+      identity-action.ts           Expected session-transition lifecycle and receipts
+      identity-sync.ts             Session result parsing and bounded synchronization
       locks.ts                     Observable runtime-local operation conflicts
       form.ts                      RHF validation, defaults and value-only bindings
       root.tsx                     Typed root/context binding; no workflow state of its own
+      type-contracts.ts            Form and callback contracts shared by workflow domains
       types.ts                     Common action, policy and form contracts
     invitations/
       workflows.tsx                Invitation reads, actions and acceptance recovery
@@ -32,6 +35,12 @@ src/
     sessions/
       workflows.tsx                Session-list actions and freshness feedback
       types.ts                     Session contracts
+    authentication/
+      workflows.tsx                Guest entry, reset, verification and sign-out lifecycles
+      types.ts                     Typed authentication form and outcome contracts
+    account/
+      workflows.tsx                Reactive profile, email, password and reauthentication flows
+      types.ts                     Current-user binding and account contracts
   convex/
     index.ts                       Application signal queries and transactional triggers
     component.ts                   Component-local access/dependency metadata readers

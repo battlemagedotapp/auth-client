@@ -1,5 +1,25 @@
 # Verification
 
+## v0.4.0 candidate — 2026-09-15
+
+Authentication and account workflows now share the same headless root/hook contract as the
+organization and session workflows. Better Auth still owns credentials and reactive session state;
+the adapter observes that session without caching a second copy. The application supplies a typed,
+identity-checked reactive current-user projection for profile synchronization.
+
+- `pnpm verify`: 88 controlled tests, type contracts, backend/example checks, lint, and formatting.
+- `pnpm test:package` and `pnpm test:git`: compiled imports, declarations, backend separation, and
+  compilation-free `v0.4.0-rc.1` candidate installation passed.
+- `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 18 seconds.
+- Live email qualification covers delivered registration verification, password reset, two-step
+  email change, and the existing invitation verification/acceptance flow. Its result is recorded
+  after the development-provider run rather than inferred from controlled delivery.
+
+Secret fields are cleared after submitted attempts. Successful writes retain only bounded internal
+receipts for read or named cleanup recovery; retries do not resubmit credentials, consumed reset
+tokens, or primary writes. Callback delivery remains owned by a mounted workflow even when the
+official authentication provider remounts for an expected identity transition.
+
 ## v0.3.1 — 2026-09-15
 
 Ownership moved to `strawdotdev/auth-client`. Package metadata, installation guidance, and the

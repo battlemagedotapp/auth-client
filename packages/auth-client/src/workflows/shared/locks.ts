@@ -4,8 +4,29 @@ import type { WorkflowPendingAction } from "./types.js";
 type Lock = { key: string; exclusive: boolean };
 function targets(action: WorkflowPendingAction, generation: number): Lock[] {
   const result: Lock[] = [];
-  const add = (kind: string, id: string, exclusive = true) =>
-    result.push({ key: JSON.stringify([generation, kind, id]), exclusive });
+  const add = (kind: string, id: string, exclusive = true, stable = false) =>
+    result.push({ key: JSON.stringify([stable ? "runtime" : generation, kind, id]), exclusive });
+  const identityTransition = [
+    "signIn",
+    "signUp",
+    "resetPassword",
+    "reauthenticate",
+    "signOut",
+  ].includes(action.operation);
+  add("identity", "current", identityTransition, true);
+  if (
+    [
+      "updateProfile",
+      "updateProfileImage",
+      "changeEmail",
+      "changePassword",
+      "reauthenticate",
+      "revokeSession",
+      "revokeOtherSessions",
+      "revokeSessions",
+    ].includes(action.operation)
+  )
+    add("account", "current", true, true);
   if (action.organizationId)
     add(
       "organization",

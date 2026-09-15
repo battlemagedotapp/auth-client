@@ -4,7 +4,7 @@ import type {
   OrganizationClient,
   SessionsClient,
   AuthDataClient,
-  InvalidationApi,
+  AuthDataClientConfig,
   Endpoint,
 } from "./types.js";
 import { CacheRuntime } from "../cache/query-cache.js";
@@ -19,13 +19,13 @@ import {
   type OrganizationReads,
 } from "../workflows/organizations/workflows.js";
 import { createSessionWorkflows, type SessionReads } from "../workflows/sessions/workflows.js";
-export function createAuthDataClient<C extends SessionClient, F extends Features>(config: {
-  authClient: C &
-    (F extends { organization: true } ? OrganizationClient : unknown) &
-    (F extends { sessions: true } ? SessionsClient : unknown);
-  api: InvalidationApi;
-  features: F;
-}): AuthDataClient<C, F> {
+import { createAuthenticationWorkflows } from "../workflows/authentication/workflows.js";
+import { createAccountWorkflows } from "../workflows/account/workflows.js";
+export function createAuthDataClient<
+  C extends SessionClient,
+  F extends Features,
+  U extends { email: string } = never,
+>(config: AuthDataClientConfig<C, F, U>): AuthDataClient<C, F, U> {
   const runtime = new CacheRuntime(
     config.authClient,
     config.api,
@@ -35,7 +35,11 @@ export function createAuthDataClient<C extends SessionClient, F extends Features
     refresh: () => runtime.refresh(),
     dispose: () => runtime.dispose(),
   };
-  const auth = config.authClient as C & OrganizationClient & SessionsClient;
+  const auth = config.authClient as C &
+    OrganizationClient &
+    SessionsClient &
+    import("./types.js").AuthenticationClient &
+    import("./types.js").AccountClient;
   function write(fn: Endpoint, endpoints: readonly string[]) {
     return async (...args: unknown[]) => {
       if (runtime.disposed) throw new Error("Adapter is disposed");
@@ -97,10 +101,14 @@ export function createAuthDataClient<C extends SessionClient, F extends Features
     );
   if (config.features.sessions)
     Object.assign(client, createSessionWorkflows(client as unknown as SessionReads, runtime));
+  if (config.features.authentication)
+    Object.assign(client, createAuthenticationWorkflows(auth, runtime));
+  if (config.features.account)
+    Object.assign(client, createAccountWorkflows(auth, runtime, config.currentUser!));
   runtimeByClient.set(client, runtime);
   // Only the explicitly selected capabilities are assembled above. TypeScript
   // cannot narrow generic F from runtime booleans; retain C's exact signatures.
-  return client as unknown as AuthDataClient<C, F>;
+  return client as unknown as AuthDataClient<C, F, U>;
 }
 
 function hasMutationError(result: unknown) {

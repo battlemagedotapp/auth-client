@@ -40,11 +40,11 @@ export function useCommittedRef<T>(value: T) {
   });
   return ref;
 }
-export function getActionState(action: ReturnType<typeof useWorkflowAction>) {
+export function getActionState(action: WorkflowActionController) {
   return {
     feedback: action.feedback(),
     diagnostics: { pendingAction: action.pendingAction, error: action.error },
-    reset: action.reset,
+    reset: () => action.reset(),
   };
 }
 export type ActionExecution = {
@@ -58,6 +58,29 @@ export type ActionExecution = {
   signal: AbortSignal;
 };
 
+export type WorkflowActionController = {
+  control(
+    target: WorkflowPendingAction,
+    reason?: WorkflowDisabledReason | null,
+  ): { isDisabled: boolean; isPending: boolean; disabledReason: WorkflowDisabledReason | null };
+  feedback(recoveries?: WorkflowFeedback[]): WorkflowFeedback[];
+  readonly owner: symbol;
+  readonly actorId?: string;
+  readonly available: boolean;
+  readonly isBusy: boolean;
+  readonly pendingAction: WorkflowPendingAction | null;
+  readonly error: WorkflowError | null;
+  current(): boolean;
+  busy(): boolean;
+  canEdit(): boolean;
+  run<T>(
+    pending: WorkflowPendingAction,
+    work: (transaction: ActionExecution) => Promise<T>,
+    alreadyWritten?: boolean,
+  ): Promise<WorkflowOutcome<T>>;
+  reset(): void;
+};
+
 type OperationState = {
   owner: symbol;
   pending: WorkflowPendingAction | null;
@@ -66,7 +89,7 @@ type OperationState = {
 };
 
 // Recovery already presents its operation's error; don't render it a second time.
-function operationFeedback(
+export function operationFeedback(
   state: OperationState | undefined,
   recoveries: WorkflowFeedback[],
 ): WorkflowFeedback[] {
@@ -81,6 +104,29 @@ function operationFeedback(
   return represented
     ? recoveries
     : [...recoveries, { target, error: error.cause, diagnostics: error, recovery: null }];
+}
+
+export function actionControl(
+  available: boolean,
+  pending: WorkflowPendingAction | null | undefined,
+  target: WorkflowPendingAction,
+  conflicts: boolean,
+  reason: WorkflowDisabledReason | null,
+) {
+  const disabledReason = !available
+    ? { code: "disabled" as const }
+    : pending != null || conflicts
+      ? { code: "busy" as const }
+      : reason;
+  return {
+    isDisabled: disabledReason !== null,
+    isPending:
+      pending != null &&
+      Object.entries(target).every(
+        ([key, value]) => pending[key as keyof WorkflowPendingAction] === value,
+      ),
+    disabledReason,
+  };
 }
 
 /** TanStack observes writes; this coordinator owns only locks and guarded continuations. */
@@ -233,20 +279,13 @@ export function useWorkflowAction(
   }
   const visible = available && feedback?.owner === owner ? feedback : undefined;
   function control(target: WorkflowPendingAction, reason: WorkflowDisabledReason | null = null) {
-    const disabledReason = !available
-      ? { code: "disabled" as const }
-      : visible?.pending != null || locks.conflicts(target, runtime.generation)
-        ? { code: "busy" as const }
-        : reason;
-    return {
-      isDisabled: disabledReason !== null,
-      isPending:
-        visible?.pending != null &&
-        Object.entries(target).every(
-          ([key, value]) => visible.pending?.[key as keyof WorkflowPendingAction] === value,
-        ),
-      disabledReason,
-    };
+    return actionControl(
+      available,
+      visible?.pending,
+      target,
+      locks.conflicts(target, runtime.generation),
+      reason,
+    );
   }
   return {
     control,

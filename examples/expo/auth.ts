@@ -5,7 +5,7 @@ import { expoClient } from "@better-auth/expo/client";
 import { convexClient, crossDomainClient } from "@convex-dev/better-auth/client/plugins";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { ConvexReactClient } from "convex/react";
+import { ConvexReactClient, useQuery } from "convex/react";
 import { api } from "../backend/convex/_generated/api";
 import { createAuthDataClient } from "@strawdev/auth-client";
 export const authClient = createAuthClient({
@@ -30,5 +30,16 @@ export const convex = new ConvexReactClient(
 export const authData = createAuthDataClient({
   authClient,
   api: api.authData,
-  features: { organization: true, sessions: true },
+  features: { organization: true, sessions: true, authentication: true, account: true },
+  currentUser: {
+    useCurrentUser() {
+      const { data: session } = authClient.useSession();
+      const identity = session?.user.id;
+      const data = useQuery(
+        api.authData.currentUser,
+        identity ? { expectedUserId: identity } : "skip",
+      );
+      return { data, identity, isPending: Boolean(identity) && data === undefined, error: null };
+    },
+  },
 });

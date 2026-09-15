@@ -1,7 +1,12 @@
 import type { FunctionReference } from "convex/server";
 
 /** Shared wire contract: no dependency on React or frontend workflow types. */
-export type Features = { organization?: boolean; sessions?: boolean };
+export type Features = {
+  organization?: boolean;
+  sessions?: boolean;
+  authentication?: boolean;
+  account?: boolean;
+};
 export type ResourceDependency = {
   scope: "directory" | "organization" | "profile" | "invitations" | "sessions" | "invitation";
   subject: string;

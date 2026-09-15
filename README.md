@@ -1,8 +1,8 @@
 # Better Auth × Convex Client
 
-`@strawdev/auth-client` supplies presentation-neutral organization, member, invitation, and session workflows around your existing Better Auth client backed by Convex. Better Auth HTTP endpoints own reads/writes, a private TanStack Query cache observes them, and authenticated Convex revision queries provide freshness.
+`@strawdev/auth-client` supplies presentation-neutral authentication, account, organization, invitation, member, and session workflows around your existing Better Auth client backed by Convex. Better Auth retains credentials and reactive session ownership. The library owns reusable forms, guarded writes, synchronization, and recovery; authenticated Convex revision queries keep supported resources fresh.
 
-The v0.3 contract below replaces the previous workflow API. Authentication, navigation, styling, and product policy remain application-owned.
+The v0.4 contract extends the compatible organization/session API with opt-in authentication and account workflows. Navigation, styling, application data, and product policy remain application-owned.
 
 ## Setup
 
@@ -12,7 +12,16 @@ import { createAuthDataClient, AuthDataProvider } from "@strawdev/auth-client";
 export const authData = createAuthDataClient({
   authClient, // existing concretely typed Better Auth React client
   api: api.authData,
-  features: { organization: true, sessions: true },
+  features: {
+    authentication: true,
+    account: true,
+    organization: true,
+    sessions: true,
+  },
+  currentUser: {
+    // Existing identity-checked reactive Convex projection; never copied into the private cache.
+    useCurrentUser,
+  },
 });
 
 // Inside the existing official ConvexBetterAuthProvider:
@@ -25,17 +34,27 @@ Enable `organizationClient()` on the original client for organization capabiliti
 
 Each root adds no markup and owns one workflow. Its context hook reads that instance. The equivalent standalone hook creates an instance for explicit composition; do not call both to control the same workflow.
 
-| Root                    | Context hook                      | Standalone hook            |
-| ----------------------- | --------------------------------- | -------------------------- |
-| OrganizationDirectory   | useOrganizationDirectoryContext   | useOrganizationDirectory   |
-| OrganizationCreateForm  | useOrganizationCreateFormContext  | useOrganizationCreateForm  |
-| OrganizationSettings    | useOrganizationSettingsContext    | useOrganizationSettings    |
-| OrganizationMembers     | useOrganizationMembersContext     | useOrganizationMembers     |
-| InvitationForm          | useInvitationFormContext          | useInvitationForm          |
-| ReceivedInvitations     | useReceivedInvitationsContext     | useReceivedInvitations     |
-| InvitationResponse      | useInvitationResponseContext      | useInvitationResponse      |
-| OrganizationInvitations | useOrganizationInvitationsContext | useOrganizationInvitations |
-| Sessions                | useSessionsContext                | useSessions                |
+| Root                     | Context hook                       | Standalone hook             |
+| ------------------------ | ---------------------------------- | --------------------------- |
+| OrganizationDirectory    | useOrganizationDirectoryContext    | useOrganizationDirectory    |
+| OrganizationCreateForm   | useOrganizationCreateFormContext   | useOrganizationCreateForm   |
+| OrganizationSettings     | useOrganizationSettingsContext     | useOrganizationSettings     |
+| OrganizationMembers      | useOrganizationMembersContext      | useOrganizationMembers      |
+| InvitationForm           | useInvitationFormContext           | useInvitationForm           |
+| ReceivedInvitations      | useReceivedInvitationsContext      | useReceivedInvitations      |
+| InvitationResponse       | useInvitationResponseContext       | useInvitationResponse       |
+| OrganizationInvitations  | useOrganizationInvitationsContext  | useOrganizationInvitations  |
+| Sessions                 | useSessionsContext                 | useSessions                 |
+| SignInForm               | useSignInFormContext               | useSignInForm               |
+| SignUpForm               | useSignUpFormContext               | useSignUpForm               |
+| PasswordResetRequestForm | usePasswordResetRequestFormContext | usePasswordResetRequestForm |
+| PasswordResetForm        | usePasswordResetFormContext        | usePasswordResetForm        |
+| EmailVerification        | useEmailVerificationContext        | useEmailVerification        |
+| ProfileSettings          | useProfileSettingsContext          | useProfileSettings          |
+| EmailChangeForm          | useEmailChangeFormContext          | useEmailChangeForm          |
+| PasswordChangeForm       | usePasswordChangeFormContext       | usePasswordChangeForm       |
+| ReauthenticationForm     | useReauthenticationFormContext     | useReauthenticationForm     |
+| SignOut                  | useSignOutContext                  | useSignOut                  |
 
 All are properties of the configured `authData` client. Scope, identity changes, and genuine departure retire private state and unfinished callbacks.
 
@@ -119,6 +138,8 @@ function CreateControls() {
 
 Also available: `defineOrganizationSettings(schema)` and `defineInvitationForm(schema)`. Each definition exposes `Root`, `useWorkflowContext()`, and standalone `useWorkflow(options)`. A same-typed replacement schema supports localized validation without recreating the definition or resetting drafts. Non-schema roots use endpoint field types directly.
 
+Authentication/account form definitions follow the same pattern (`defineSignInForm`, `defineSignUpForm`, reset, verification, profile, email, password, and reauthentication). Their input is the editable draft while schema output is the Better Auth payload, so an application can infer custom fields or transform presentation values without another controller.
+
 Settings expose `form` only while an authorized organization exists. Pristine drafts adopt remote updates; dirty drafts remain intact and expose `hasServerChanges`. Explicit reset adopts the latest authorized projection. This is draft preservation, not server-side optimistic concurrency.
 
 ## Actions and recovery
@@ -133,6 +154,11 @@ Settings expose `form` only while an authorized organization exists. Pristine dr
 | Single invitation          | `actions.accept`, `actions.reject`                                                   |
 | Outgoing invitations       | `invitation(id).cancel`, `invitation(id).resend`                                     |
 | Sessions                   | `session(id).revoke`, `actions.revokeOthers`, `actions.revokeAll`                    |
+| Sign in / sign up          | `form.actions.submit`                                                                |
+| Reset / verification       | `form.actions.submit`                                                                |
+| Profile                    | `form.actions.submit`, `actions.update.run(data)`, `actions.updateImage.run(image)`  |
+| Email / password / reauth  | `form.actions.submit`                                                                |
+| Sign out                   | `actions.signOut`                                                                    |
 
 Observed-item actions resolve current payloads internally. Resend preserves supported custom invitation fields. Do not copy rows into mutation payloads.
 
@@ -167,7 +193,11 @@ Use canonical completion callbacks for routing: `onCreated`, `onUpdated`, and `o
 
 Pass cleanup through `beforeDelete({ organizationId, signal })`. Preparation runs before deletion under the organization's operation lock. Failure prevents deletion; genuine departure aborts the signal and suppresses subsequent deletion. The application owns idempotent cleanup, confirmation dialogs, timeouts, and server guards. Cancellation cannot undo completed cleanup or an HTTP request already sent.
 
-Keep personal-organization ordering/restrictions, role policies, owner counts, uploads, navigation, account switching, reauthentication, and unsupported authentication operations in the application. Directory selection is controlled and never changes Better Auth's active organization automatically. Explicit invalid selections do not fall back; `fallback="first"` is opt-in.
+Keep personal-organization ordering/restrictions, role policies, owner counts, upload processing, navigation, and unsupported authentication methods in the application. Directory selection is controlled and never changes Better Auth's active organization automatically. Explicit invalid selections do not fall back; `fallback="first"` is opt-in.
+
+Identity workflows observe the configured Better Auth session hook and official Convex authentication readiness; they do not add a second session cache. Sign-in, sign-up, reauthentication, and sign-out recognize only their expected identity transition. Unrelated account changes retire callbacks and private recovery. Password reset and reauthentication distinguish read recovery from post-write cleanup, so retrying never repeats a consumed token or password submission. Secret fields are cleared after every submitted attempt and are never included in feedback or callback payloads.
+
+`account: true` requires one typed current-user binding backed by the application's existing reactive, identity-checked user query. Profile drafts adopt remote changes while pristine and preserve local edits while dirty. Profile completion waits for the authoritative projection. The binding is consumed directly—its data is neither mirrored nor stored in TanStack Query.
 
 Members expose the visible page and pagination metadata, not their internal fetched prefix. The HTTP transport requests progressively larger ordered prefixes; it is not efficient cursor pagination. See [pagination limits](docs/pagination.md). Session-list responses remain bounded and authoritative; the current session is separate rather than inserted into that list.
 
@@ -202,7 +232,7 @@ Use the official Better Auth **local component installation** with organization 
 6. Export `createSignalQueries({ features, lookup, getAuthUser, requireVerifiedInvitationEmail }).signals` as an authenticated public app query. `getAuthUser` delegates to your official auth component.
 7. Pass the generated `api.authData` reference to the adapter.
 
-Use the same feature flags on both sides. Protocol/capability mismatches surface as synchronization errors. Supply the **effective** invitation verification requirement from your auth configuration; it is required rather than guessed. In the example a shared `true` constant configures both Better Auth and the bridge. Account for Better Auth's generated/custom-ID defaults if your policy is implicit.
+Use the same backend-backed `organization` and `sessions` flags on both sides. `authentication` and `account` are client-only workflow capabilities. Protocol/capability mismatches surface as synchronization errors. Supply the **effective** invitation verification requirement from your auth configuration; it is required rather than guessed. In the example a shared `true` constant configures both Better Auth and the bridge. Account for Better Auth's generated/custom-ID defaults if your policy is implicit.
 
 The example sets `advanced.database.generateId: false` so Convex allocates database IDs. Its indexes include session expiry and invitation lookup indexes. Schema generation remains application-owned; regenerate after changing auth plugins/options.
 
@@ -219,11 +249,11 @@ The example sets `advanced.database.generateId: false` so Convex allocates datab
 
 ## Replacing an application-owned auth cache
 
-The workflows replace supported-domain form state, action readiness, conflict guards, and synchronization/recovery sequencing as well as query keys and invalidation. Keep navigation, reauthentication, product cleanup, and unsupported account forms in the application.
+The workflows replace supported-domain form state, action readiness, conflict guards, and synchronization/recovery sequencing as well as query keys and invalidation. Keep presentation, navigation, product cleanup, and unsupported authentication methods in the application.
 
 - Prefer workflow roots or hooks for the supported journeys. Low-level methods are advanced escape hatches; they confirm writes, not synchronized navigation data. Do not wrap ordinary supported controls in another mutation/controller layer.
 - `refetch()` returns `{ data, error }`, or `undefined` when disabled/disposed or when the identity changed. It rejects read failures. Hook state uses `isPending` and `isFetching`; it is not the full TanStack observer API.
-- Keep account changes on the original auth client. Backend triggers update supported resources; call `refresh()` when a workflow explicitly needs to await them. Keep cleanup of application-owned organization data before deleting the Better Auth organization.
+- Use the original client directly only for advanced escape hatches or authentication methods outside the enabled workflow surface. Backend triggers update supported resources; call `refresh()` only when an advanced integration explicitly needs to await them. Keep cleanup of application-owned organization data before deleting the Better Auth organization.
 - Move each connected set of readers and writers together. During a staged migration, retain old signal producers while any application still consumes their contract; do not assume an existing application's signal queries are interchangeable with this package's generated references.
 
 ## Installation
@@ -231,7 +261,7 @@ The workflows replace supported-domain form state, action readiness, conflict gu
 Install the precompiled release:
 
 ```sh
-pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.3.1'
+pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.4.0-rc.1'
 ```
 
 Release tags contain the ready-to-use package at the repository root: JavaScript, declarations, and source maps. Installation does not compile this library, install its development tooling, or require permission to run its build scripts. The application still bundles normally and supplies the documented peer dependencies and authentication/backend configuration.

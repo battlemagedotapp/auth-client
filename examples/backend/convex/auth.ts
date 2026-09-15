@@ -26,7 +26,32 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>) => ({
   trustedOrigins: [process.env.SITE_URL ?? "http://localhost:8099", "reactive-auth-example://"],
   database: authComponent.adapter(ctx),
   advanced: { database: { generateId: false as const } },
-  emailAndPassword: { enabled: true, requireEmailVerification: true },
+  user: {
+    changeEmail: {
+      enabled: true,
+      sendChangeEmailConfirmation: async ({
+        user,
+        newEmail,
+        url,
+      }: {
+        user: { email: string };
+        newEmail: string;
+        url: string;
+      }) =>
+        sendAuthEmail(ctx, {
+          to: user.email,
+          subject: `Approve email change to ${newEmail}`,
+          url,
+        }),
+    },
+  },
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) =>
+      sendAuthEmail(ctx, { to: user.email, subject: "Reset your password", url }),
+  },
   emailVerification: {
     sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) =>
       sendAuthEmail(ctx, { to: user.email, subject: "Verify your email", url }),

@@ -8,8 +8,8 @@ if (!process.env.AUTH_CLIENT_EMAIL_DEPLOYMENT) {
 
 export default defineConfig({
   testDir: "./e2e-live",
-  // Five provider deliveries span four sequential phases; each has its own
-  // three-minute bound in the test. This aggregate limit is live-email only.
+  // Provider deliveries span sequential account and invitation phases; each has
+  // its own three-minute bound in the tests. This aggregate limit is live-email only.
   timeout: 15 * 60_000,
   expect: { timeout: 10_000 },
   use: { baseURL, headless: true, actionTimeout: 10_000 },

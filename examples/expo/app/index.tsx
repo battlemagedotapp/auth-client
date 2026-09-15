@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
+import * as Linking from "expo-linking";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
 import { authClient, authData } from "../auth";
 import type { WorkflowAction, WorkflowFeedback as Feedback } from "@strawdev/auth-client";
@@ -14,74 +15,92 @@ const ticketInvitationSchema = z.object({
     .transform(Number)
     .pipe(z.number().int().nonnegative()),
 });
+const SignUp = authData.defineSignUpForm(
+  z
+    .object({ email: z.email(), password: z.string().min(1) })
+    .transform((values) => ({ ...values, name: values.email })),
+);
 export default function Home() {
   const session = authClient.useSession();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const { organizationId, invitationId } = useLocalSearchParams<{
+  const callbackURL = Linking.createURL("/");
+  const { organizationId, invitationId, token } = useLocalSearchParams<{
     organizationId?: string;
     invitationId?: string;
+    token?: string;
   }>();
-  const [profileName, setProfileName] = useState("");
   const [message, setMessage] = useState("");
-  async function run(work: () => Promise<any>) {
-    try {
-      const result = await work();
-      setMessage(result?.error?.message ?? "Saved");
-    } catch (error) {
-      setMessage(String(error));
-    }
-  }
   return (
     <ScrollView contentContainerStyle={{ padding: 24, gap: 12, maxWidth: 800 }}>
       <Text accessibilityRole="header">Auth data example</Text>
       <Text accessibilityRole="alert">{message}</Text>
       {!session.data ? (
         <>
-          <TextInput accessibilityLabel="Email" value={email} onChangeText={setEmail} />
-          <TextInput
-            accessibilityLabel="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <Button
-            title="Sign in"
-            onPress={() => run(() => authClient.signIn.email({ email, password }))}
-          />
-          <Button
-            title="Sign up"
-            onPress={() =>
-              run(() => authClient.signUp.email({ email, password, name: email, callbackURL: "/" }))
-            }
-          />
+          <authData.SignInForm
+            initialValues={{ email: "", password: "" }}
+            onAuthenticated={() => setMessage("Signed in")}
+            onVerificationRequired={() => setMessage("Verification required")}
+          >
+            <SignInControls />
+          </authData.SignInForm>
+          <SignUp.Root
+            initialValues={{ email: "", password: "" }}
+            callbackURL={callbackURL}
+            onVerificationRequired={() => setMessage("Verification required")}
+          >
+            <SignUpControls />
+          </SignUp.Root>
+          <authData.PasswordResetRequestForm
+            initialValues={{ email: "" }}
+            redirectTo={callbackURL}
+            onRequested={() => setMessage("Password reset requested")}
+          >
+            <PasswordResetRequestControls />
+          </authData.PasswordResetRequestForm>
+          {token ? (
+            <authData.PasswordResetForm
+              initialValues={{ newPassword: "" }}
+              token={token}
+              onReset={() => setMessage("Password reset")}
+            >
+              <PasswordResetControls />
+            </authData.PasswordResetForm>
+          ) : null}
         </>
       ) : (
         <>
           <Text>{session.data.user.email}</Text>
-          <Button title="Sign out" onPress={() => run(() => authClient.signOut())} />
+          <authData.SignOut onSignedOut={() => setMessage("Signed out")}>
+            <SignOutControls />
+          </authData.SignOut>
           {!session.data.user.emailVerified ? (
-            <Button
-              title="Send verification email"
-              onPress={() =>
-                run(() =>
-                  authClient.sendVerificationEmail({
-                    email: session.data!.user.email,
-                    callbackURL: "/",
-                  }),
-                )
-              }
-            />
+            <authData.EmailVerification
+              initialValues={{ email: session.data.user.email }}
+              callbackURL={callbackURL}
+              onRequested={() => setMessage("Verification sent")}
+            >
+              <EmailVerificationControls />
+            </authData.EmailVerification>
           ) : null}
-          <TextInput
-            accessibilityLabel="Profile name"
-            value={profileName}
-            onChangeText={setProfileName}
-          />
-          <Button
-            title="Update profile"
-            onPress={() => run(() => authClient.updateUser({ name: profileName }))}
-          />
+          <authData.ProfileSettings getInitialValues={(user) => ({ name: user.name })}>
+            <ProfileControls />
+          </authData.ProfileSettings>
+          <authData.EmailChangeForm
+            initialValues={{ newEmail: "" }}
+            callbackURL={callbackURL}
+            onRequested={() => setMessage("Email change requested")}
+          >
+            <EmailChangeControls />
+          </authData.EmailChangeForm>
+          <authData.PasswordChangeForm
+            initialValues={{ currentPassword: "", newPassword: "" }}
+            revokeOtherSessions
+            onChanged={() => setMessage("Password changed")}
+          >
+            <PasswordChangeControls />
+          </authData.PasswordChangeForm>
+          <authData.ReauthenticationForm onReauthenticated={() => setMessage("Reauthenticated")}>
+            <ReauthenticationControls />
+          </authData.ReauthenticationForm>
           {invitationId ? (
             <Invitation id={invitationId} onAccepted={(slug) => setMessage(`Accepted ${slug}`)} />
           ) : null}
@@ -113,6 +132,192 @@ export default function Home() {
         </>
       )}
     </ScrollView>
+  );
+}
+
+function SignInControls() {
+  const form = authData.useSignInFormContext();
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Email"
+        value={form.field("email").value}
+        onChangeText={form.field("email").onChange}
+        onBlur={form.field("email").onBlur}
+        editable={!form.field("email").isDisabled}
+      />
+      <TextInput
+        accessibilityLabel="Password"
+        secureTextEntry
+        value={form.field("password").value}
+        onChangeText={form.field("password").onChange}
+        onBlur={form.field("password").onBlur}
+        editable={!form.field("password").isDisabled}
+      />
+      <ActionButton title="Sign in" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} recoveryTitle="Retry sign-in refresh" />
+    </>
+  );
+}
+
+function SignUpControls() {
+  const form = SignUp.useWorkflowContext();
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Sign-up email"
+        value={form.field("email").value}
+        onChangeText={form.field("email").onChange}
+        editable={!form.field("email").isDisabled}
+      />
+      <TextInput
+        accessibilityLabel="Sign-up password"
+        secureTextEntry
+        value={form.field("password").value}
+        onChangeText={form.field("password").onChange}
+        editable={!form.field("password").isDisabled}
+      />
+      <ActionButton title="Sign up" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} recoveryTitle="Retry sign-up refresh" />
+    </>
+  );
+}
+
+function SignOutControls() {
+  const workflow = authData.useSignOutContext();
+  return (
+    <>
+      <ActionButton title="Sign out" action={workflow.actions.signOut} />
+      <WorkflowFeedback feedback={workflow.feedback} recoveryTitle="Retry sign-out refresh" />
+    </>
+  );
+}
+
+function PasswordResetRequestControls() {
+  const form = authData.usePasswordResetRequestFormContext();
+  const email = form.field("email");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Reset email"
+        value={email.value}
+        onChangeText={email.onChange}
+        onBlur={email.onBlur}
+        editable={!email.isDisabled}
+      />
+      <ActionButton title="Request password reset" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} />
+    </>
+  );
+}
+
+function PasswordResetControls() {
+  const form = authData.usePasswordResetFormContext();
+  const password = form.field("newPassword");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Reset password"
+        secureTextEntry
+        value={password.value}
+        onChangeText={password.onChange}
+        onBlur={password.onBlur}
+        editable={!password.isDisabled}
+      />
+      <ActionButton title="Reset password" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} recoveryTitle="Finish password reset" />
+    </>
+  );
+}
+
+function EmailVerificationControls() {
+  const workflow = authData.useEmailVerificationContext();
+  return (
+    <>
+      <ActionButton title="Send verification email" action={workflow.actions.submit} />
+      <WorkflowFeedback feedback={workflow.feedback} />
+    </>
+  );
+}
+
+function ProfileControls() {
+  const workflow = authData.useProfileSettingsContext();
+  if (!workflow.form) return null;
+  const name = workflow.form.field("name");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Profile name"
+        value={name.value}
+        onChangeText={name.onChange}
+        onBlur={name.onBlur}
+        editable={!name.isDisabled}
+      />
+      <ActionButton title="Update profile" action={workflow.form.actions.submit} />
+      <WorkflowFeedback feedback={workflow.form.feedback} queryError={workflow.queryError} />
+    </>
+  );
+}
+
+function EmailChangeControls() {
+  const form = authData.useEmailChangeFormContext();
+  const email = form.field("newEmail");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="New email"
+        value={email.value}
+        onChangeText={email.onChange}
+        onBlur={email.onBlur}
+        editable={!email.isDisabled}
+      />
+      <ActionButton title="Change email" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} />
+    </>
+  );
+}
+
+function PasswordChangeControls() {
+  const form = authData.usePasswordChangeFormContext();
+  const current = form.field("currentPassword");
+  const next = form.field("newPassword");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Current password"
+        secureTextEntry
+        value={current.value}
+        onChangeText={current.onChange}
+        editable={!current.isDisabled}
+      />
+      <TextInput
+        accessibilityLabel="New password"
+        secureTextEntry
+        value={next.value}
+        onChangeText={next.onChange}
+        editable={!next.isDisabled}
+      />
+      <ActionButton title="Change password" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} />
+    </>
+  );
+}
+
+function ReauthenticationControls() {
+  const form = authData.useReauthenticationFormContext();
+  const password = form.field("password");
+  return (
+    <>
+      <TextInput
+        accessibilityLabel="Reauthentication password"
+        secureTextEntry
+        value={password.value}
+        onChangeText={password.onChange}
+        editable={!password.isDisabled}
+      />
+      <ActionButton title="Reauthenticate" action={form.actions.submit} />
+      <WorkflowFeedback feedback={form.feedback} recoveryTitle="Finish reauthentication" />
+    </>
   );
 }
 function Organization({ id }: { id: string }) {
@@ -171,9 +376,11 @@ function ActionButton({ title, action }: { title: string; action: WorkflowAction
 function WorkflowFeedback({
   feedback,
   queryError,
+  recoveryTitle = "Retry organization refresh",
 }: {
   feedback: readonly Feedback[];
   queryError?: unknown;
+  recoveryTitle?: string;
 }) {
   const message = (error: unknown) =>
     error instanceof Error ? error.message : JSON.stringify(error);
@@ -183,9 +390,7 @@ function WorkflowFeedback({
       {feedback.map((entry, index) => (
         <View key={index}>
           {entry.error ? <Text accessibilityRole="alert">{message(entry.error)}</Text> : null}
-          {entry.recovery ? (
-            <ActionButton title="Retry organization refresh" action={entry.recovery} />
-          ) : null}
+          {entry.recovery ? <ActionButton title={recoveryTitle} action={entry.recovery} /> : null}
         </View>
       ))}
     </View>

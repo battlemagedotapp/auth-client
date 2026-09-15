@@ -12,7 +12,9 @@ export async function prepareRelease({ parentDirectory = defaultParentDirectory 
   await mkdir(parentDirectory, { recursive: true });
   const directory = await mkdtemp(join(parentDirectory, "release-"));
   for (const file of manifest.files.filter((file) => file !== "dist")) {
-    await cp(join(source, file), join(directory, file), { recursive: true });
+    await cp(file === "README.md" ? join(root, file) : join(source, file), join(directory, file), {
+      recursive: true,
+    });
   }
   // Release snapshots are installable without lifecycle scripts or build tooling.
   const {

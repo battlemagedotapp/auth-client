@@ -104,6 +104,7 @@ const fixtures = [
   "gaia-compatibility.types.ts",
   "invitations.types.tsx",
   "organization-session.types.tsx",
+  "authentication.types.tsx",
 ];
 for (const fixture of fixtures) {
   const source = await readFile(join(root, "tests", fixture), "utf8");

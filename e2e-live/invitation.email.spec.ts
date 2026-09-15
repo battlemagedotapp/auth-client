@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createMailbox, getEmailActionUrl } from "@strawdev/resend-tui";
+import { createMailbox, getEmailActionUrl, getEmailActionUrls } from "@strawdev/resend-tui";
 
 const backendDirectory = fileURLToPath(new URL("../examples/backend", import.meta.url));
 const deployment = process.env.AUTH_CLIENT_EMAIL_DEPLOYMENT!;
@@ -35,8 +35,8 @@ function updateUser(email: string, update: Record<string, unknown>) {
 
 async function signUp(page: Page, email: string) {
   await page.goto("/");
-  await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Sign-up email", { exact: true }).fill(email);
+  await page.getByLabel("Sign-up password", { exact: true }).fill(password);
   const sentAfter = Date.now();
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   const verification = await mailbox.waitForEmail({
@@ -47,12 +47,15 @@ async function signUp(page: Page, email: string) {
   });
   await page.goto(getEmailActionUrl(verification, "/api/auth/verify-email"));
   await page.goto("/");
-  if (await page.getByLabel("Email", { exact: true }).isVisible()) {
-    await page.getByLabel("Email", { exact: true }).fill(email);
+  const signOut = page.getByRole("button", { name: "Sign out", exact: true });
+  const signInEmail = page.getByLabel("Email", { exact: true });
+  await expect(signOut.or(signInEmail)).toBeVisible();
+  if (await signInEmail.isVisible()) {
+    await signInEmail.fill(email);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
   }
-  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await expect(signOut).toBeVisible();
 }
 
 async function invite(owner: Page, recipient: string) {
@@ -67,6 +70,76 @@ async function invite(owner: Page, recipient: string) {
   });
   return getEmailActionUrl(email, "/");
 }
+
+async function signIn(page: Page, email: string, currentPassword: string) {
+  await page.goto("/");
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(currentPassword);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+}
+
+function getActionUrlWithPathPrefix(
+  email: Parameters<typeof getEmailActionUrls>[0],
+  expectedPrefix: string,
+) {
+  const url = getEmailActionUrls(email).find((candidate) =>
+    new URL(candidate).pathname.startsWith(expectedPrefix),
+  );
+  if (!url) throw new Error(`No action URL starting with ${expectedPrefix} found.`);
+  return url;
+}
+
+test("delivered registration, reset, and email-change links complete their workflows", async ({
+  page,
+}) => {
+  const suffix = Date.now();
+  const originalEmail = `delivered+live-account-${suffix}@resend.dev`;
+  const changedEmail = `delivered+live-changed-${suffix}@resend.dev`;
+  const changedPassword = "Changed-password-123!";
+
+  await signUp(page, originalEmail);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByLabel("Reset email", { exact: true })).toBeVisible();
+
+  const resetSentAfter = Date.now();
+  await page.getByLabel("Reset email", { exact: true }).fill(originalEmail);
+  await page.getByRole("button", { name: "Request password reset", exact: true }).click();
+  const reset = await mailbox.waitForEmail({
+    to: originalEmail,
+    subject: "Reset your password",
+    sentAfter: resetSentAfter,
+    timeoutMs: deliveryTimeoutMs,
+  });
+  await page.goto(getActionUrlWithPathPrefix(reset, "/api/auth/reset-password/"));
+  await page.getByLabel("Reset password", { exact: true }).fill(changedPassword);
+  await page.getByRole("button", { name: "Reset password", exact: true }).click();
+  await expect(page.getByText("Password reset", { exact: true })).toBeVisible();
+  await signIn(page, originalEmail, changedPassword);
+
+  const confirmationSentAfter = Date.now();
+  await page.getByLabel("New email", { exact: true }).fill(changedEmail);
+  await page.getByRole("button", { name: "Change email", exact: true }).click();
+  await expect(page.getByText("Email change requested", { exact: true })).toBeVisible();
+  const confirmation = await mailbox.waitForEmail({
+    to: originalEmail,
+    subject: `Approve email change to ${changedEmail}`,
+    sentAfter: confirmationSentAfter,
+    timeoutMs: deliveryTimeoutMs,
+  });
+
+  const verificationSentAfter = Date.now();
+  await page.goto(getEmailActionUrl(confirmation, "/api/auth/verify-email"));
+  const verification = await mailbox.waitForEmail({
+    to: changedEmail,
+    subject: "Verify your email",
+    sentAfter: verificationSentAfter,
+    timeoutMs: deliveryTimeoutMs,
+  });
+  await page.goto(getEmailActionUrl(verification, "/api/auth/verify-email"));
+  await page.goto("/");
+  await expect(page.getByText(changedEmail, { exact: true })).toBeVisible();
+});
 
 test("delivered invitations preserve verification, recipient, and completion behavior", async ({
   browser,
