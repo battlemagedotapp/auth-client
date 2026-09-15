@@ -119,8 +119,8 @@ importers:
         specifier: 1.62.1
         version: 1.62.1
       '@strawdev/resend-tui':
-        specifier: github:battlemagedotapp/resend-tui#v0.1.0
-        version: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/b1e3ae395b49d61e4f2e826cec93a3dd501a8560(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
+        specifier: github:battlemagedotapp/resend-tui#v0.1.1
+        version: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
       '@tanstack/react-query':
         specifier: 5.102.8
         version: 5.102.8(react@19.2.3)
@@ -199,6 +199,9 @@ importers:
       convex:
         specifier: 1.45.0
         version: 1.45.0(react@19.2.3)
+      zod:
+        specifier: 4.6.4
+        version: 4.6.4
     devDependencies:
       auth:
         specifier: 1.6.22
@@ -2295,9 +2298,9 @@ packages:
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
-  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/b1e3ae395b49d61e4f2e826cec93a3dd501a8560':
-    resolution: {gitHosted: true, integrity: sha512-he8KpkCv8y1fHGTHwF3ZgvYkA6lmnZEsZI0Jw02jbdtdtKq1IMG+Ub3TdDBPTyWjFl96qyMxE1vzRLYMXU6oRw==, tarball: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/b1e3ae395b49d61e4f2e826cec93a3dd501a8560}
-    version: 0.1.0
+  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07':
+    resolution: {gitHosted: true, integrity: sha512-6z48iL2TS73zzuGMiIp1XA/FDonmk1vAkMVIntT8ClPKdKWLCgPbDTJhCWynT/Jg2cazdDW/6Ae1Cd3vItNjcw==, tarball: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07}
+    version: 0.1.1
     engines: {node: '>=24 <25'}
     hasBin: true
 
@@ -4927,9 +4930,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.6.2:
-    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
-
   zod@4.6.4:
     resolution: {integrity: sha512-AXSD6hvGdvRjajG/l1cC+d6IrhH+sjmPKtYeQdJIK8MFJl3LyClzS+o/YsVC+zQZPupAaeH5skwwm8YqYH7BqA==}
 
@@ -5473,8 +5473,8 @@ snapshots:
       '@better-auth/core': 1.6.22(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(better-call@1.3.7(zod@4.6.4))(jose@6.2.12)(kysely@0.29.5)(nanostores@1.5.3)
       '@better-fetch/fetch': 1.3.1
       better-auth: 1.6.22(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(vitest@4.1.5(@types/node@24.13.3)(jsdom@27.4.0(@noble/hashes@2.4.0)(supports-color@8.1.1))(vite@8.3.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0)))
-      better-call: 1.3.7(zod@4.6.2)
-      zod: 4.6.2
+      better-call: 1.3.7(zod@4.6.4)
+      zod: 4.6.4
     optionalDependencies:
       expo-constants: 57.0.18(expo@57.0.22)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.4)(react@19.2.3)(supports-color@8.1.1))(supports-color@8.1.1)
       expo-linking: 57.0.10(expo@57.0.22)(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.4)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)(supports-color@8.1.1)
@@ -6798,7 +6798,7 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/b1e3ae395b49d61e4f2e826cec93a3dd501a8560(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)':
+  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)':
     dependencies:
       '@opentui/core': 0.5.9(typescript@6.0.3)(web-tree-sitter@0.25.10)
       '@opentui/react': 0.5.9(react-devtools-core@7.0.1)(react@19.2.3)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
@@ -7020,7 +7020,7 @@ snapshots:
       prompts: 2.4.2
       semver: 7.8.5
       yocto-spinner: 0.2.3
-      zod: 4.6.2
+      zod: 4.6.4
     transitivePeerDependencies:
       - '@better-fetch/fetch'
       - '@cloudflare/workers-types'
@@ -7179,15 +7179,6 @@ snapshots:
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
       - '@opentelemetry/api'
-
-  better-call@1.3.7(zod@4.6.2):
-    dependencies:
-      '@better-auth/utils': 0.4.2
-      '@better-fetch/fetch': 1.3.1
-      rou3: 0.7.12
-      set-cookie-parser: 3.1.2
-    optionalDependencies:
-      zod: 4.6.2
 
   better-call@1.3.7(zod@4.6.4):
     dependencies:
@@ -9586,7 +9577,5 @@ snapshots:
   yoctocolors@2.2.0: {}
 
   zod@3.25.76: {}
-
-  zod@4.6.2: {}
 
   zod@4.6.4: {}

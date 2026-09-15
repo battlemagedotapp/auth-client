@@ -2,8 +2,8 @@
 
 ## Live email ownership — 2026-09-14
 
-The isolated example now keeps controlled mail local and selects Convex Resend explicitly for live
-qualification. `@strawdev/resend-tui` v0.1.0 is pinned only as repository test tooling;
+The isolated example keeps controlled mail local and selects Convex Resend explicitly for live
+qualification. `@strawdev/resend-tui` v0.1.1 is pinned only as repository test tooling;
 `@convex-dev/resend` 0.2.7 belongs only to the example backend, not the published Auth Client
 runtime.
 
@@ -13,7 +13,7 @@ runtime.
 - `pnpm test:e2e`: all eight local HTTP-mailbox browser journeys passed in 1 minute 24 seconds.
 - `pnpm test:email`: the delivered wrong-account, verification, rejection, acceptance, membership,
   and canonical-completion journey passed against development deployment `uncommon-gopher-566` in
-  45 seconds.
+  45.5 seconds.
 
 Auth Client owns the detailed authentication journey. Gaia retains only its template, route,
 presentation, cleanup, and application-handoff checks; `resend-tui` owns component mailbox behavior.
@@ -34,7 +34,7 @@ Gaia consumes roots above availability gates and standalone hooks for collection
 - Member pagination fetches progressively larger HTTP prefixes; it is not cursor pagination.
 - Session lists remain authoritative and bounded; the current session is separate.
 - Native execution is unverified. Qualification uses Expo Web and non-production Convex targets only.
-- Fallow retains the guarded action runner, two browser-covered example controls with estimated-coverage warnings, and two small invitation fragments. Their lifecycle/presentation differences do not justify another abstraction. Seven inherited dead-code findings and eleven inherited complexity findings are recorded separately; no suppressions were added. Gaia introduces no Fallow dead-code, complexity, duplication, or styling findings.
+- Fallow retains the guarded action runner, two browser-covered example controls with estimated-coverage warnings, and two small invitation fragments. Their lifecycle/presentation differences do not justify another abstraction. Current findings are inherited; no suppressions or new findings were added.
 
 ## Reproduce
 
