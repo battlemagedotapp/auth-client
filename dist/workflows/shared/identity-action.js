@@ -161,6 +161,8 @@ function isAvailable(runtime, availability, enabled, disposed, view) {
         return true;
     if (availability === "guest")
         return !observation.userId;
+    if (availability === "session")
+        return Boolean(observation.userId && observation.sessionId);
     return observation.ready;
 }
 function viewHasRecovery(view) {

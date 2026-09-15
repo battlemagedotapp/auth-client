@@ -198,7 +198,7 @@ export function createAuthenticationWorkflows(auth, runtime) {
     }
     function useSignOut(options = { initialValues: {} }) {
         const scope = "sign-out";
-        const { action, receipt } = useReceiptAction(scope, "authenticated", options);
+        const { action, receipt } = useReceiptAction(scope, "session", options);
         const finish = async (transaction) => {
             const current = receipts.get(scope);
             requireAvailable(current?.kind === "signOut");
