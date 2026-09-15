@@ -9,7 +9,7 @@ identity-checked reactive current-user projection for profile synchronization.
 
 - `pnpm verify`: 88 controlled tests, type contracts, backend/example checks, lint, and formatting.
 - `pnpm test:package` and `pnpm test:git`: compiled imports, declarations, backend separation, and
-  compilation-free `v0.4.0-rc.2` candidate installation passed.
+  compilation-free `v0.4.0-rc.3` candidate installation passed.
 - `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 18 seconds.
 - Live email qualification covers delivered registration verification, password reset, two-step
   email change, and the existing invitation verification/acceptance flow. Its result is recorded
@@ -19,6 +19,10 @@ Secret fields are cleared after submitted attempts. Successful writes retain onl
 receipts for read or named cleanup recovery; retries do not resubmit credentials, consumed reset
 tokens, or primary writes. Callback delivery remains owned by a mounted workflow even when the
 official authentication provider remounts for an expected identity transition.
+
+The RC.3 review split identity execution into bounded lifecycle, transaction, and failure
+responsibilities and consolidated schema roots and email-request behavior. Fallow reports no new
+dead code, complexity, duplication, or boundary findings across the complete v0.4 change.
 
 ## v0.3.1 — 2026-09-15
 

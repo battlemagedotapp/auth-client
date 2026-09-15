@@ -34,6 +34,28 @@ type Lease = {
   callbackAllowed: boolean;
 };
 
+function retireCallback(
+  callbacks: Map<string, { owner: symbol; callback: (() => void) | undefined }>,
+  scope: string,
+  owner: symbol,
+) {
+  const retirement = callbacks.get(scope);
+  if (retirement?.owner !== owner) return;
+  retirement.callback?.();
+  callbacks.delete(scope);
+}
+
+function retireLease(active: Map<string, Lease>, scope: string, owner: symbol) {
+  const lease = active.get(scope);
+  if (lease?.owner !== owner) return;
+  lease.callbackAllowed = false;
+  lease.controller.abort();
+}
+
+function retireVisibleState(visible: Map<string, VisibleState>, scope: string, owner: symbol) {
+  if (visible.get(scope)?.owner === owner) visible.delete(scope);
+}
+
 function createIdentityOperations() {
   const listeners = new Set<() => void>();
   const visible = new Map<string, VisibleState>();
@@ -110,16 +132,9 @@ function createIdentityOperations() {
       const lease = active.get(scope);
       const state = visible.get(scope);
       if (lease?.owner !== owner && state?.owner !== owner) return;
-      const retirement = retireCallbacks.get(scope);
-      if (retirement?.owner === owner) {
-        retirement.callback?.();
-        retireCallbacks.delete(scope);
-      }
-      if (lease?.owner === owner) {
-        lease.callbackAllowed = false;
-        lease.controller.abort();
-      }
-      if (state?.owner === owner) visible.delete(scope);
+      retireCallback(retireCallbacks, scope, owner);
+      retireLease(active, scope, owner);
+      retireVisibleState(visible, scope, owner);
       changed();
     },
     clearReceipt(scope: string, owner: symbol) {
@@ -144,6 +159,192 @@ function identityOperations(runtime: CacheRuntime) {
 
 type Availability = "guest" | "authenticated" | "settled";
 
+type IdentityStore = ReturnType<typeof createIdentityOperations>;
+type LockStore = ReturnType<typeof workflowLocks>;
+type ExecutionState = {
+  completionDelivered: boolean;
+  phase: WorkflowError["phase"];
+  target: WorkflowPendingAction;
+  writeSucceeded: boolean;
+};
+
+function useIdentityOwner(
+  runtime: CacheRuntime,
+  scope: string,
+  store: IdentityStore,
+  onRetire?: () => void,
+) {
+  const [owner] = useState(() => Symbol());
+  const providerRevision = runtime.attachmentRevision;
+  store.configure(scope, owner, onRetire);
+  useLayoutEffect(() => {
+    store.adopt(scope, owner);
+    return () => {
+      queueMicrotask(() => {
+        if (runtime.attachmentRevision === providerRevision || runtime.attached === 0)
+          store.retire(scope, owner);
+      });
+    };
+  }, [runtime, scope, owner, providerRevision, store]);
+  return owner;
+}
+
+function isAvailable(
+  runtime: CacheRuntime,
+  availability: Availability,
+  enabled: boolean,
+  disposed: boolean,
+  view: VisibleState | undefined,
+) {
+  const observation = runtime.authObservation;
+  if (!enabled) return false;
+  if (disposed) return false;
+  if (viewHasRecovery(view)) return true;
+  if (observation.sessionPending) return false;
+  if (availability === "settled") return true;
+  if (availability === "guest") return !observation.userId;
+  return observation.ready;
+}
+
+function viewHasRecovery(view: VisibleState | undefined) {
+  if (!view) return false;
+  if (view.pending !== null) return true;
+  return view.error?.writeSucceeded === true;
+}
+
+function beginIdentityExecution(
+  locks: LockStore,
+  store: IdentityStore,
+  scope: string,
+  owner: symbol,
+  target: WorkflowPendingAction,
+  generation: number,
+) {
+  const lock = locks.acquire(target, generation);
+  if (!lock) return;
+  const lease = store.begin(scope, owner, target);
+  if (lease) return { lease, lock };
+  lock.release();
+}
+
+function identityTransaction(
+  store: IdentityStore,
+  execution: { lease: Lease; lock: NonNullable<ReturnType<LockStore["acquire"]>> },
+  state: ExecutionState,
+  valid: () => boolean,
+): ActionExecution {
+  return {
+    current: valid,
+    signal: execution.lease.controller.signal,
+    phase: (next) => {
+      state.phase = next;
+    },
+    complete: async (callback) => {
+      if (!valid()) throw new Error("Obsolete workflow completion");
+      state.phase = "callback";
+      state.completionDelivered = true;
+      await callback();
+    },
+    write: async (write, nextTarget) => {
+      if (!valid()) throw new Error("Obsolete workflow");
+      if (nextTarget) {
+        state.target = {
+          ...state.target,
+          ...(typeof nextTarget === "string" ? { invitationId: nextTarget } : nextTarget),
+        };
+        if (!execution.lock.extend(state.target)) throw conflict;
+        store.pending(execution.lease, state.target);
+      }
+      const result = await write();
+      state.writeSucceeded = true;
+      return result;
+    },
+  };
+}
+
+function identityFailure<T>(
+  cause: unknown,
+  valid: () => boolean,
+  state: ExecutionState,
+  store: IdentityStore,
+  scope: string,
+  owner: symbol,
+  lease: Lease,
+  onError: WorkflowFeedbackOptions["onError"],
+): WorkflowOutcome<T> {
+  if (!valid() && !state.completionDelivered) return ignored("obsolete");
+  if (cause === conflict) return ignored("busy");
+  if (cause === identityOperationObsolete) {
+    store.clearReceipt(scope, owner);
+    return ignored("obsolete");
+  }
+  const error = {
+    phase: state.phase,
+    cause,
+    writeSucceeded: state.writeSucceeded,
+  };
+  store.fail(lease, state.target, error);
+  onError?.({ target: state.target, error: cause, diagnostics: error });
+  return { status: "error", error };
+}
+
+async function executeIdentityAction<T>(
+  context: {
+    callbacks: WorkflowFeedbackOptions;
+    current: () => boolean;
+    available: boolean;
+    generation: number;
+    locks: LockStore;
+    owner: symbol;
+    scope: string;
+    store: IdentityStore;
+  },
+  initialTarget: WorkflowPendingAction,
+  work: (transaction: ActionExecution) => Promise<T>,
+  alreadyWritten: boolean,
+): Promise<WorkflowOutcome<T>> {
+  if (!context.current()) return ignored("obsolete");
+  if (!context.available) return ignored("disabled");
+  if (context.store.view(context.scope)?.pending != null) return ignored("busy");
+  const execution = beginIdentityExecution(
+    context.locks,
+    context.store,
+    context.scope,
+    context.owner,
+    initialTarget,
+    context.generation,
+  );
+  if (!execution) return ignored("busy");
+  const state: ExecutionState = {
+    completionDelivered: false,
+    phase: "write",
+    target: initialTarget,
+    writeSucceeded: alreadyWritten,
+  };
+  const valid = () =>
+    context.current() && execution.lease.active && execution.lease.callbackAllowed;
+  try {
+    const data = await work(identityTransaction(context.store, execution, state, valid));
+    return !valid() && !state.completionDelivered
+      ? ignored("obsolete")
+      : { status: "success", data };
+  } catch (cause) {
+    return identityFailure(
+      cause,
+      valid,
+      state,
+      context.store,
+      context.scope,
+      context.owner,
+      execution.lease,
+      context.callbacks.onError,
+    );
+  } finally {
+    execution.lock.release();
+    context.store.finish(execution.lease);
+  }
+}
+
 /** Coordinates operations whose successful result intentionally changes session identity. */
 export function useIdentityAction(
   runtime: CacheRuntime,
@@ -157,104 +358,34 @@ export function useIdentityAction(
   const { identity, disposed } = useClientBoundary(runtime);
   const locks = workflowLocks(runtime);
   const store = identityOperations(runtime);
-  const [owner] = useState(() => Symbol());
-  store.configure(scope, owner, lifecycleOptions.onRetire);
   useSyncExternalStore(locks.subscribe, locks.getSnapshot, locks.getSnapshot);
   useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   useSyncExternalStore(runtime.subscribeAuth, runtime.getAuthRevision, runtime.getAuthRevision);
   const observation = runtime.authObservation;
   const view = store.view(scope);
-  const providerRevision = runtime.attachmentRevision;
-  useLayoutEffect(() => {
-    store.adopt(scope, owner);
-    return () => {
-      queueMicrotask(() => {
-        if (runtime.attachmentRevision === providerRevision || runtime.attached === 0)
-          store.retire(scope, owner);
-      });
-    };
-  }, [runtime, scope, owner, providerRevision, store]);
-  const sessionSettled = !observation.sessionPending;
-  const nominallyAvailable =
-    enabled &&
-    !disposed &&
-    sessionSettled &&
-    (availability === "settled" ||
-      (availability === "guest" ? !observation.userId : observation.ready));
-  const available =
-    nominallyAvailable ||
-    (enabled && !disposed && (view?.pending != null || view?.error?.writeSucceeded === true));
+  const owner = useIdentityOwner(runtime, scope, store, lifecycleOptions.onRetire);
+  const available = isAvailable(runtime, availability, enabled, disposed, view);
   const current = () => !runtime.disposed;
   const busy = () => store.view(scope)?.pending != null;
   function reset() {
     store.reset(scope);
   }
-  async function run<T>(
-    initialTarget: WorkflowPendingAction,
-    work: (transaction: ActionExecution) => Promise<T>,
-    alreadyWritten = false,
-  ): Promise<WorkflowOutcome<T>> {
-    if (!current()) return ignored("obsolete");
-    if (!available) return ignored("disabled");
-    if (busy()) return ignored("busy");
-    const lock = locks.acquire(initialTarget, runtime.generation);
-    if (!lock) return ignored("busy");
-    const lease = store.begin(scope, owner, initialTarget);
-    if (!lease) {
-      lock.release();
-      return ignored("busy");
-    }
-    let target = initialTarget;
-    let phase: WorkflowError["phase"] = "write";
-    let writeSucceeded = alreadyWritten;
-    let completionDelivered = false;
-    const valid = () => current() && lease.active && lease.callbackAllowed;
-    try {
-      const data = await work({
-        current: valid,
-        signal: lease.controller.signal,
-        phase: (next) => {
-          phase = next;
-        },
-        complete: async (callback) => {
-          if (!valid()) throw new Error("Obsolete workflow completion");
-          phase = "callback";
-          completionDelivered = true;
-          await callback();
-        },
-        write: async (fn, nextTarget) => {
-          if (!valid()) throw new Error("Obsolete workflow");
-          if (nextTarget) {
-            target = {
-              ...target,
-              ...(typeof nextTarget === "string" ? { invitationId: nextTarget } : nextTarget),
-            };
-            if (!lock.extend(target)) throw conflict;
-            store.pending(lease, target);
-          }
-          const result = await fn();
-          writeSucceeded = true;
-          return result;
-        },
-      });
-      if (!valid() && !completionDelivered) return ignored("obsolete");
-      return { status: "success", data };
-    } catch (cause) {
-      if (!valid() && !completionDelivered) return ignored("obsolete");
-      if (cause === conflict) return ignored("busy");
-      if (cause === identityOperationObsolete) {
-        store.clearReceipt(scope, owner);
-        return ignored("obsolete");
-      }
-      const error = { phase, cause, writeSucceeded };
-      store.fail(lease, target, error);
-      callbacks.current.onError?.({ target, error: cause, diagnostics: error });
-      return { status: "error", error };
-    } finally {
-      lock.release();
-      store.finish(lease);
-    }
-  }
+  const run: WorkflowActionController["run"] = (target, work, alreadyWritten = false) =>
+    executeIdentityAction(
+      {
+        callbacks: callbacks.current,
+        current,
+        available,
+        generation: runtime.generation,
+        locks,
+        owner,
+        scope,
+        store,
+      },
+      target,
+      work,
+      alreadyWritten,
+    );
   function control(target: WorkflowPendingAction, reason: WorkflowDisabledReason | null = null) {
     const visible = store.view(scope);
     return actionControl(

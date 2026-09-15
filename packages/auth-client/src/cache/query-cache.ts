@@ -47,9 +47,9 @@ export class CacheRuntime {
     convexLoading: true,
   };
   authSession: unknown = null;
-  private authRevision = 0;
-  private authListeners = new Set<() => void>();
-  private sessionRefetch?: () => Promise<unknown>;
+  authRevision = 0;
+  authListeners = new Set<() => void>();
+  sessionRefetch?: () => Promise<unknown>;
   timers = new Set<ReturnType<typeof setTimeout>>();
   private deadlines = new Map<string, { expiry: number; observers: number; stop: () => void }>();
   observeExpiry(key: QueryKey, expiry: number) {
@@ -202,17 +202,6 @@ export class CacheRuntime {
     };
   };
   getAuthRevision = () => this.authRevision;
-  observeAuth(observation: AuthObservation, refetch?: () => Promise<unknown>, session?: unknown) {
-    this.sessionRefetch = refetch;
-    this.authSession = session;
-    const changed = JSON.stringify(this.authObservation) !== JSON.stringify(observation);
-    this.authObservation = observation;
-    this.setIdentity(observation);
-    if (changed) {
-      this.authRevision++;
-      for (const listener of this.authListeners) listener();
-    }
-  }
   async refreshSession() {
     if (!this.sessionRefetch) throw new Error("The configured session hook cannot be refreshed");
     const result = await this.sessionRefetch();
@@ -364,4 +353,20 @@ export class CacheRuntime {
     for (const listener of this.authListeners) listener();
     this.authListeners.clear();
   }
+}
+
+export function observeAuth(
+  runtime: CacheRuntime,
+  observation: AuthObservation,
+  refetch?: () => Promise<unknown>,
+  session?: unknown,
+) {
+  runtime.sessionRefetch = refetch;
+  runtime.authSession = session;
+  const changed = JSON.stringify(runtime.authObservation) !== JSON.stringify(observation);
+  runtime.authObservation = observation;
+  runtime.setIdentity(observation);
+  if (!changed) return;
+  runtime.authRevision++;
+  for (const listener of runtime.authListeners) listener();
 }

@@ -22,3 +22,26 @@ export function defineWorkflow<Options, State>(
   }
   return { Root, useWorkflow, useWorkflowContext };
 }
+
+/** Name a root contract once while retaining the conventional public surface. */
+export function exposeWorkflow<Options, State, Definition>(
+  name: string,
+  workflow: WorkflowDefinition<Options, State>,
+  define?: Definition,
+) {
+  return {
+    [name]: workflow.Root,
+    [`use${name}`]: workflow.useWorkflow,
+    [`use${name}Context`]: workflow.useWorkflowContext,
+    ...(define === undefined ? {} : { [`define${name}`]: define }),
+  };
+}
+
+export function defineSchemaWorkflow<Options, State, Schema>(
+  useWorkflow: (options: Options) => State,
+  schema: Schema,
+) {
+  return defineWorkflow((options: Options) =>
+    useWorkflow(Object.assign({}, options, { schema }) as Options),
+  );
+}

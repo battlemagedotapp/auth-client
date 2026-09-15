@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, type ReactNode } from "react";
 import { useConvex, useConvexAuth } from "convex/react";
+import { observeAuth } from "../cache/query-cache.js";
 import type { AuthDataLifecycle } from "./types.js";
 import { AuthDataContext, runtimeByClient } from "./provider-context.js";
 export function AuthDataProvider({
@@ -21,7 +22,8 @@ export function AuthDataProvider({
   useLayoutEffect(() => runtime.attach(convex), [runtime, convex]);
   useLayoutEffect(
     () =>
-      runtime.observeAuth(
+      observeAuth(
+        runtime,
         {
           ...identity,
           sessionToken: session.data?.session.token,
