@@ -1,6 +1,6 @@
 # Verification
 
-## v0.4.3-rc.1 — 2026-09-16
+## v0.4.3 — 2026-09-16
 
 Form validation remains serialized by the workflow action lock, but validation issues are now
 represented only by form-owned field and form feedback. They retain the existing validation-error
@@ -11,6 +11,10 @@ later operation failures retain their existing feedback behavior.
 - `pnpm test:package` and `pnpm test:git`: compiled and Git-package installations passed.
 - `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 24 seconds.
 - Fallow reported no findings introduced by the release diff; existing findings remain inherited.
+- Gaia's root check and affected deterministic suites passed against `v0.4.3-rc.1`. Focused web
+  journeys passed for guest authentication, account overlays, compact and expanded invitation
+  presentation, organization unavailability, and account switching. Stable `v0.4.3` contains the
+  same implementation as the qualified candidate.
 
 ## v0.4.2 — 2026-09-15
 
