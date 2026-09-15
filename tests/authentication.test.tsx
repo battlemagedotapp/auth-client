@@ -460,6 +460,14 @@ it("keeps sign-out synchronization recovery actionable after session absence", a
     });
   });
   expect(hook.result.current.feedback[0]?.recovery?.isDisabled).toBe(false);
+  expect(hook.result.current.actions.signOut.disabledReason).toEqual({ code: "recovery" });
+  await act(async () => {
+    expect(await hook.result.current.actions.signOut.run()).toEqual({
+      status: "ignored",
+      reason: "disabled",
+    });
+  });
+  expect(fixture.auth.signOut).toHaveBeenCalledOnce();
   await act(async () => {
     expect(await hook.result.current.feedback[0]!.recovery!.run()).toEqual({
       status: "success",
@@ -595,6 +603,23 @@ it("recovers displaced-session cleanup without repeating reauthentication", asyn
     { wrapper },
   );
   await waitFor(() => expect(profile.result.current.form).not.toBeNull());
+  const pendingProfileWrite = deferred<void>();
+  auth.updateUser.mockImplementationOnce(async (values: Record<string, unknown>) => {
+    await pendingProfileWrite.promise;
+    user = { ...user, ...values };
+    emitUser();
+    return { status: true };
+  });
+  let pendingProfileResult!: ReturnType<typeof profile.result.current.actions.update.run>;
+  act(() => {
+    pendingProfileResult = profile.result.current.actions.update.run({ name: "Pending profile" });
+  });
+  await waitFor(() => expect(profile.result.current.isPending).toBe(true));
+  pendingProfileWrite.resolve();
+  await act(async () => {
+    await pendingProfileResult;
+  });
+  expect(profile.result.current.isPending).toBe(false);
   act(() => profile.result.current.form!.field("name").onChange("Local draft"));
   act(() => {
     user = { ...user, name: "Remote" };
@@ -620,6 +645,13 @@ it("recovers displaced-session cleanup without repeating reauthentication", asyn
     ).toMatchObject({ status: "error", error: { phase: "synchronization", writeSucceeded: true } });
   });
   expect(profile.result.current.feedback[0]?.recovery).not.toBeNull();
+  expect(profile.result.current.actions.update.disabledReason).toEqual({ code: "recovery" });
+  await act(async () => {
+    expect(
+      await profile.result.current.actions.update.run({ name: "Repeated profile write" }),
+    ).toEqual({ status: "ignored", reason: "disabled" });
+  });
+  expect(auth.updateUser).toHaveBeenCalledTimes(writesBeforeRecovery + 1);
   act(() => {
     userError = null;
     user = { ...user, name: "Recovered profile" };

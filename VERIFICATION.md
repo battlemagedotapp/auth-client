@@ -1,5 +1,12 @@
 # Verification
 
+## v0.4.2-rc.1 — 2026-09-15
+
+Profile workflows now include active writes in their aggregate pending state, and direct profile
+and sign-out actions enforce the same recovery restriction exposed by their action handles. Focused
+controlled coverage proves modal-containment state and prevents successful primary writes from
+being repeated while read-only recovery is pending.
+
 ## v0.4.1 — 2026-09-15
 
 Workflow state now exposes aggregate `isPending` for presentation-level containment such as modal
