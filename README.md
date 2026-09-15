@@ -2,7 +2,7 @@
 
 `@strawdev/auth-client` supplies presentation-neutral organization, member, invitation, and session workflows around your existing Better Auth client backed by Convex. Better Auth HTTP endpoints own reads/writes, a private TanStack Query cache observes them, and authenticated Convex revision queries provide freshness.
 
-The v0.3.0 contract below replaces the previous workflow API. Authentication, navigation, styling, and product policy remain application-owned.
+The v0.3 contract below replaces the previous workflow API. Authentication, navigation, styling, and product policy remain application-owned.
 
 ## Setup
 
@@ -231,14 +231,14 @@ The workflows replace supported-domain form state, action readiness, conflict gu
 Install the precompiled release:
 
 ```sh
-pnpm add '@strawdev/auth-client@github:battlemagedotapp/auth-client#v0.3.0'
+pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.3.1-rc.1'
 ```
 
 Release tags contain the ready-to-use package at the repository root: JavaScript, declarations, and source maps. Installation does not compile this library, install its development tooling, or require permission to run its build scripts. The application still bundles normally and supplies the documented peer dependencies and authentication/backend configuration.
 
 Keep the dependency manifest and lockfile in each application. Upgrade deliberately to another release tag; development commits do not change an installed release. Private repositories require Git access on developer machines and CI. No npm account or package registry configuration is needed.
 
-The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates a version tag and GitHub Release. Tags point to compiled snapshots; do not tag source commits manually. The package version determines the tag. Never move or reuse a released tag. The repository is public at [battlemagedotapp/auth-client](https://github.com/battlemagedotapp/auth-client). [v0.1.0](https://github.com/battlemagedotapp/auth-client/releases/tag/v0.1.0) is published and its GitHub installation has been verified in an isolated consumer.
+The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates an immutable version tag and GitHub Release. The canonical repository is [strawdotdev/auth-client](https://github.com/strawdotdev/auth-client).
 
 ## Development
 

@@ -1,9 +1,16 @@
 # Verification
 
+## v0.3.1-rc.1 — 2026-09-15
+
+Ownership moved to `strawdotdev/auth-client`. Package metadata, installation guidance, and the
+`@strawdev/resend-tui` v0.1.2 development dependency now resolve directly to canonical
+`strawdotdev` repositories. Runtime behavior is unchanged. `pnpm verify` passed 77 controlled
+tests; package, Git-installation, and all eight isolated browser journeys also passed.
+
 ## Live email ownership — 2026-09-14
 
 The isolated example keeps controlled mail local and selects Convex Resend explicitly for live
-qualification. `@strawdev/resend-tui` v0.1.1 is pinned only as repository test tooling;
+qualification. `@strawdev/resend-tui` v0.1.2 is pinned only as repository test tooling;
 `@convex-dev/resend` 0.2.7 belongs only to the example backend, not the published Auth Client
 runtime.
 

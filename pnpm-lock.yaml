@@ -119,8 +119,8 @@ importers:
         specifier: 1.62.1
         version: 1.62.1
       '@strawdev/resend-tui':
-        specifier: github:battlemagedotapp/resend-tui#v0.1.1
-        version: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
+        specifier: github:strawdotdev/resend-tui#v0.1.2
+        version: https://codeload.github.com/strawdotdev/resend-tui/tar.gz/4f045e82ace28a1a94b1f5bb58977dc5f2da695f(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)
       '@tanstack/react-query':
         specifier: 5.102.8
         version: 5.102.8(react@19.2.3)
@@ -2298,9 +2298,9 @@ packages:
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
-  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07':
-    resolution: {gitHosted: true, integrity: sha512-6z48iL2TS73zzuGMiIp1XA/FDonmk1vAkMVIntT8ClPKdKWLCgPbDTJhCWynT/Jg2cazdDW/6Ae1Cd3vItNjcw==, tarball: https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07}
-    version: 0.1.1
+  '@strawdev/resend-tui@https://codeload.github.com/strawdotdev/resend-tui/tar.gz/4f045e82ace28a1a94b1f5bb58977dc5f2da695f':
+    resolution: {gitHosted: true, integrity: sha512-P4P3lFi76Q2/4rha/TaLOGKyPUE+xnfvkg6Apd8cJWEPOzHRjM7S1PL1h5C/bH++cIrIog292+ebJ5DBRuaSEw==, tarball: https://codeload.github.com/strawdotdev/resend-tui/tar.gz/4f045e82ace28a1a94b1f5bb58977dc5f2da695f}
+    version: 0.1.2
     engines: {node: '>=24 <25'}
     hasBin: true
 
@@ -6798,7 +6798,7 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@strawdev/resend-tui@https://codeload.github.com/battlemagedotapp/resend-tui/tar.gz/c1aebd956dae9d89139a453330dd9640ff1f3d07(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)':
+  '@strawdev/resend-tui@https://codeload.github.com/strawdotdev/resend-tui/tar.gz/4f045e82ace28a1a94b1f5bb58977dc5f2da695f(react-devtools-core@7.0.1)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)':
     dependencies:
       '@opentui/core': 0.5.9(typescript@6.0.3)(web-tree-sitter@0.25.10)
       '@opentui/react': 0.5.9(react-devtools-core@7.0.1)(react@19.2.3)(typescript@6.0.3)(web-tree-sitter@0.25.10)(ws@8.21.3)

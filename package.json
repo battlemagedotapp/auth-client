@@ -24,7 +24,7 @@
   "devDependencies": {
     "@convex-dev/better-auth": "0.12.5",
     "@playwright/test": "1.62.1",
-    "@strawdev/resend-tui": "github:battlemagedotapp/resend-tui#v0.1.1",
+    "@strawdev/resend-tui": "github:strawdotdev/resend-tui#v0.1.2",
     "@tanstack/react-query": "5.102.8",
     "@testing-library/react": "16.3.3",
     "@types/node": "24.13.3",

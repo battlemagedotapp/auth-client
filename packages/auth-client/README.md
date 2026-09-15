@@ -216,7 +216,7 @@ Compared against the reference application at `c67014ff8cde8d81f1c53153e5b72f589
 | Session list and revocation mutation state       | `Sessions`                                       | Reauthentication, translations, timestamps, device labels             |
 | Cache invalidation and duplicate-action guards   | Existing runtime and shared workflow coordinator | Foreground/network recovery wiring                                    |
 
-Account profile/email/password and sign-in/up flows remain outside this increment. No feature model needs mutation keys, query invalidation effects, locks, or canonical-refresh sequencing for the supported workflows. These headless APIs are included in `v0.2.0`; the published `v0.1.0` tag remains unchanged.
+Account profile/email/password and sign-in/up flows remain outside this increment. No feature model needs mutation keys, query invalidation effects, locks, or canonical-refresh sequencing for the supported workflows. These headless APIs are included in the v0.3 contract.
 
 ### Navigation and failure integration
 
@@ -436,17 +436,17 @@ The adapter replaces query keys/options, auth cache invalidation metadata, and s
 
 ## Installation
 
-Install the first precompiled release:
+Install the precompiled release:
 
 ```sh
-pnpm add '@strawdev/auth-client@github:battlemagedotapp/auth-client#v0.2.0'
+pnpm add '@strawdev/auth-client@github:strawdotdev/auth-client#v0.3.1-rc.1'
 ```
 
 Release tags contain the ready-to-use package at the repository root: JavaScript, declarations, and source maps. Installation does not compile this library, install its development tooling, or require permission to run its build scripts. The application still bundles normally and supplies the documented peer dependencies and authentication/backend configuration.
 
 Keep the dependency manifest and lockfile in each application. Upgrade deliberately to another release tag; development commits do not change an installed release. Private repositories require Git access on developer machines and CI. No npm account or package registry configuration is needed.
 
-The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates a version tag and GitHub Release. Tags point to compiled snapshots; do not tag source commits manually. The package version determines the tag. Never move or reuse a released tag. The repository is public at [battlemagedotapp/auth-client](https://github.com/battlemagedotapp/auth-client). [v0.1.0](https://github.com/battlemagedotapp/auth-client/releases/tag/v0.1.0) is published and its GitHub installation has been verified in an isolated consumer.
+The repository has one release path: its manually triggered **Release** GitHub Actions workflow builds and tests the package, updates the `dist` distribution branch, and creates an immutable version tag and GitHub Release. The canonical repository is [strawdotdev/auth-client](https://github.com/strawdotdev/auth-client).
 
 ## Development
 
