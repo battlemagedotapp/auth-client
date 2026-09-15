@@ -23,6 +23,15 @@ type RequiredSchemaOptions<Base, S extends z.ZodType> = Omit<Base, "schema" | "i
   schema: S;
   initialValues: z.input<S>;
 };
+type FormHook<Base, State, Values> = {
+  (options: Base): State;
+  <S extends WorkflowFormSchema<Values>>(
+    options: Omit<Base, "schema" | "initialValues"> & {
+      schema: S;
+      initialValues: z.input<S>;
+    },
+  ): State extends WorkflowForm<any, infer Result> ? WorkflowForm<z.input<S>, Result> : never;
+};
 
 export type ProfileUpdateValues<C extends AccountClient> = EndpointValues<
   Parameters<C["updateUser"]>[0]
@@ -108,10 +117,34 @@ export type AccountWorkflows<C extends AccountClient, U extends { email: string 
   useEmailChangeFormContext(): EmailChangeFormState<C>;
   usePasswordChangeFormContext(): PasswordChangeFormState<C>;
   useReauthenticationFormContext(): ReauthenticationFormState<C>;
-  useProfileSettings(options: ProfileSettingsOptions<C, U>): ProfileSettingsState<C, U>;
-  useEmailChangeForm(options: EmailChangeFormOptions<C>): EmailChangeFormState<C>;
-  usePasswordChangeForm(options: PasswordChangeFormOptions<C>): PasswordChangeFormState<C>;
-  useReauthenticationForm(options?: ReauthenticationFormOptions<C>): ReauthenticationFormState<C>;
+  useProfileSettings: {
+    (options: ProfileSettingsOptions<C, U>): ProfileSettingsState<C, U>;
+    <S extends WorkflowFormSchema<ProfileUpdateValues<C>>>(
+      options: Omit<ProfileSettingsOptions<C, U>, "schema" | "getInitialValues"> & {
+        schema: S;
+        getInitialValues(user: U): z.input<S>;
+      },
+    ): ProfileSettingsState<C, U, z.input<S>>;
+  };
+  useEmailChangeForm: FormHook<
+    EmailChangeFormOptions<C>,
+    EmailChangeFormState<C>,
+    EmailChangeValues<C>
+  >;
+  usePasswordChangeForm: FormHook<
+    PasswordChangeFormOptions<C>,
+    PasswordChangeFormState<C>,
+    PasswordChangeValues<C>
+  >;
+  useReauthenticationForm: {
+    (options?: ReauthenticationFormOptions<C>): ReauthenticationFormState<C>;
+    <S extends WorkflowFormSchema<ReauthenticationValues>>(
+      options: Omit<ReauthenticationFormOptions<C>, "schema" | "initialValues"> & {
+        schema: S;
+        initialValues?: z.input<S>;
+      },
+    ): ReauthenticationFormState<C, z.input<S>>;
+  };
   ProfileSettings: WorkflowRootComponent<ProfileSettingsOptions<C, U>>;
   EmailChangeForm: WorkflowRootComponent<EmailChangeFormOptions<C>>;
   PasswordChangeForm: WorkflowRootComponent<PasswordChangeFormOptions<C>>;
