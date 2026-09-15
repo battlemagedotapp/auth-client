@@ -644,6 +644,7 @@ it("submits only schema output and omits optional undefined values before custom
 
 it("preserves literal field names and maps nested and root schema issues", async () => {
   const f = fixture();
+  const onError = vi.fn();
   const schema = z
     .object({
       email: z.string(),
@@ -659,6 +660,7 @@ it("preserves literal field names and maps nested and root schema issues", async
       f.authData.useInvitationForm({
         schema,
         organizationId: "org",
+        onError,
         initialValues: {
           email: "recipient@example.com",
           role: "member",
@@ -677,6 +679,8 @@ it("preserves literal field names and maps nested and root schema issues", async
     code: "custom",
     message: "Form policy failed",
   });
+  expect(hook.result.current.feedback).toEqual([]);
+  expect(onError).not.toHaveBeenCalled();
   expect(f.writes).toHaveLength(0);
 });
 
@@ -841,6 +845,7 @@ it("locks before async submission validation and preserves validator failures", 
   const f = fixture();
   const hold = deferred<void>();
   const cause = new Error("Validation service failed");
+  const onError = vi.fn();
   const validate = vi.fn(async () => {
     await hold.promise;
     throw cause;
@@ -850,6 +855,7 @@ it("locks before async submission validation and preserves validator failures", 
       f.authData.useInvitationForm({
         organizationId: "org",
         initialValues: { email: "recipient@example.com", role: "member" },
+        onError,
         validate,
       }),
     { wrapper: f.wrapper },
@@ -875,6 +881,8 @@ it("locks before async submission validation and preserves validator failures", 
     });
   });
   expect(hook.result.current.validationError).toMatchObject({ cause });
+  expect(hook.result.current.feedback).toEqual([]);
+  expect(onError).not.toHaveBeenCalled();
   expect(f.writes).toHaveLength(0);
 });
 

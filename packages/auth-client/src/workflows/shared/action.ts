@@ -23,6 +23,27 @@ export const ignored = (
 ): WorkflowOutcome<never> => ({ status: "ignored", reason });
 const conflict = Symbol("workflow conflict");
 const unavailable = Symbol("workflow unavailable");
+const handledFailure = Symbol("handled workflow failure");
+
+type HandledFailure = {
+  [handledFailure]: true;
+  cause: unknown;
+};
+
+/** Marks a failure already represented by workflow-owned state, such as form validation. */
+export const handledWorkflowFailure = (cause: unknown): HandledFailure => ({
+  [handledFailure]: true,
+  cause,
+});
+
+export function classifyWorkflowFailure(cause: unknown) {
+  const handled =
+    typeof cause === "object" && cause !== null && handledFailure in cause
+      ? (cause as HandledFailure)
+      : null;
+  return { cause: handled?.cause ?? cause, isHandled: handled !== null };
+}
+
 export function requireAvailable(condition: unknown): asserts condition {
   if (!condition) throw unavailable;
 }
@@ -260,10 +281,15 @@ export function useWorkflowAction(
       if (!valid() && !completionDelivered) return ignored("obsolete");
       if (cause === conflict) return ignored("busy");
       if (cause === unavailable) return ignored("unavailable");
-      const error = { phase, cause, writeSucceeded };
-      if (valid()) {
+      const failure = classifyWorkflowFailure(cause);
+      const error = { phase, cause: failure.cause, writeSucceeded };
+      if (valid() && !failure.isHandled) {
         setFeedback({ owner, pending: null, error, target: pending });
-        callbacks.current.onError?.({ target: pending, error: cause, diagnostics: error });
+        callbacks.current.onError?.({
+          target: pending,
+          error: failure.cause,
+          diagnostics: error,
+        });
       }
       return { status: "error", error };
     } finally {

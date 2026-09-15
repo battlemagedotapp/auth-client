@@ -2,7 +2,12 @@ import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { useForm, useWatch, type FieldErrors, type ResolverResult } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NEVER, record, string, unknown, type ZodType } from "zod";
-import { useCommittedRef, type ActionExecution, type WorkflowActionController } from "./action.js";
+import {
+  handledWorkflowFailure,
+  useCommittedRef,
+  type ActionExecution,
+  type WorkflowActionController,
+} from "./action.js";
 import { hashKey } from "@tanstack/react-query";
 import type { FormFieldErrors, FormFieldIssue } from "./types.js";
 import type { WorkflowOperation } from "./types.js";
@@ -296,7 +301,11 @@ export function useWorkflowForm(
               invalid = failures;
             },
           )();
-          if (invalid) throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
+          if (invalid)
+            throw handledWorkflowFailure({
+              fields: publicFields(invalid),
+              form: formIssue(invalid._form),
+            });
           if (!transaction.current()) throw new Error("Obsolete form submission");
           if (execution.resetToDraft) {
             clearValidation();

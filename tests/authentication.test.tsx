@@ -123,6 +123,57 @@ function authenticationFixture(initial: Session | null = null) {
   return { auth, client, sessions, wrapper };
 }
 
+it("keeps guest form validation inline without reporting an operation failure", async () => {
+  const fixture = authenticationFixture();
+  const onError = vi.fn();
+  const hook = renderHook(
+    () =>
+      fixture.client.useSignInForm({
+        initialValues: { email: "", password: "" },
+        onError,
+      }),
+    { wrapper: fixture.wrapper },
+  );
+  await waitFor(() => expect(hook.result.current.actions.submit.isDisabled).toBe(false));
+  await act(async () => {
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({
+      status: "error",
+      error: { phase: "validation", writeSucceeded: false },
+    });
+  });
+  expect(hook.result.current.field("email").error?.code).toBe("required");
+  expect(hook.result.current.field("password").error?.code).toBe("required");
+  expect(hook.result.current.feedback).toEqual([]);
+  expect(onError).not.toHaveBeenCalled();
+  expect(fixture.auth.signIn.email).not.toHaveBeenCalled();
+});
+
+it("reports a rejected authentication write as operation feedback", async () => {
+  const fixture = authenticationFixture();
+  const cause = new Error("sign-in unavailable");
+  const onError = vi.fn();
+  fixture.auth.signIn.email.mockRejectedValue(cause);
+  const hook = renderHook(
+    () =>
+      fixture.client.useSignInForm({
+        initialValues: { email: "person@example.com", password: "secret" },
+        onError,
+      }),
+    { wrapper: fixture.wrapper },
+  );
+  await waitFor(() => expect(hook.result.current.actions.submit.isDisabled).toBe(false));
+  await act(async () => {
+    expect(await hook.result.current.actions.submit.run()).toMatchObject({
+      status: "error",
+      error: { phase: "write", cause, writeSucceeded: false },
+    });
+  });
+  expect(hook.result.current.feedback).toHaveLength(1);
+  expect(hook.result.current.feedback[0]?.error).toBe(cause);
+  expect(onError).toHaveBeenCalledOnce();
+  expect(onError.mock.calls[0]?.[0]).toMatchObject({ error: cause });
+});
+
 it("recovers sign-in synchronization without repeating credentials and clears secrets", async () => {
   const fixture = authenticationFixture();
   const completion = vi.fn();

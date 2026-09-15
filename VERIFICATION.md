@@ -1,5 +1,17 @@
 # Verification
 
+## v0.4.3-rc.1 — 2026-09-16
+
+Form validation remains serialized by the workflow action lock, but validation issues are now
+represented only by form-owned field and form feedback. They retain the existing validation-error
+outcome without creating operation feedback, recovery, or `onError` callbacks. Rejected writes and
+later operation failures retain their existing feedback behavior.
+
+- `pnpm verify`: 91 controlled tests plus library, backend, example, lint, and formatting checks.
+- `pnpm test:package` and `pnpm test:git`: compiled and Git-package installations passed.
+- `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 24 seconds.
+- Fallow reported no findings introduced by the release diff; existing findings remain inherited.
+
 ## v0.4.2 — 2026-09-15
 
 Profile workflows now include active writes in their aggregate pending state, and direct profile
