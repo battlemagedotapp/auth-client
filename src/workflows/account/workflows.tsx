@@ -14,7 +14,7 @@ import {
 import { useWorkflowForm, type FormOptions } from "../shared/form.js";
 import { useIdentityAction } from "../shared/identity-action.js";
 import { resultIdentity, synchronizeAuthenticated, textValue } from "../shared/identity-sync.js";
-import { defineWorkflow } from "../shared/root.js";
+import { defineSchemaWorkflow, defineWorkflow, exposeWorkflow } from "../shared/root.js";
 import type { WorkflowAction, WorkflowFeedback } from "../shared/types.js";
 import type { CurrentUserBinding, CurrentUserState } from "./types.js";
 
@@ -95,13 +95,35 @@ type UserObserver<U> = {
   waitFor(predicate: (user: U) => boolean, signal: AbortSignal, timeout?: number): Promise<U>;
 };
 type ProfileTarget = "updateProfile" | "updateProfileImage";
+type ProfileUpdates<U> = {
+  pending:
+    | {
+        owner: symbol;
+        target: ProfileTarget;
+        values: Values;
+      }
+    | undefined;
+  feedback: WorkflowFeedback[];
+  write(
+    target: ProfileTarget,
+    values: Values,
+    transaction: ActionExecution,
+  ): Promise<{
+    outcome: "updated";
+    user: U;
+  }>;
+  complete(
+    completion: { outcome: "updated"; user: U },
+    transaction: ActionExecution,
+  ): Promise<{ outcome: "updated"; user: U }>;
+};
 
 function useProfileUpdates<U>(
   auth: AccountClient,
   users: UserObserver<U>,
   action: WorkflowActionController,
   onUpdated: ((value: unknown) => void | Promise<void>) | undefined,
-) {
+): ProfileUpdates<U> {
   const [receipt, setReceipt] = useState<{
     owner: symbol;
     target: ProfileTarget;
@@ -158,6 +180,26 @@ function useProfileUpdates<U>(
   return { pending, feedback: action.feedback(recoveries), write, complete };
 }
 
+function profileAction<TArgs extends unknown[], U>(
+  action: WorkflowActionController,
+  updates: ProfileUpdates<U>,
+  target: ProfileTarget,
+  values: (...args: TArgs) => Values,
+): WorkflowAction<TArgs, unknown> {
+  const operation = { operation: target };
+  return {
+    ...action.control(operation, updates.pending ? { code: "recovery" } : null),
+    run: (...args) =>
+      action.run(operation, async (transaction) =>
+        updates.complete(await updates.write(target, values(...args), transaction), transaction),
+      ),
+  };
+}
+
+function profileInitialValues<U>(user: U | undefined, options: Options): Values {
+  return user ? (options.getInitialValues as (value: U) => Values)(user) : {};
+}
+
 export function createAccountWorkflows<U extends { email: string }>(
   auth: AccountClient,
   runtime: CacheRuntime,
@@ -197,38 +239,20 @@ export function createAccountWorkflows<U extends { email: string }>(
       action,
       options.onUpdated as ((value: unknown) => void | Promise<void>) | undefined,
     );
-    const initialValues = user
-      ? (options.getInitialValues as (value: U) => Values)(user)
-      : ({} as Values);
-    const workflowForm = useWorkflowForm({ ...options, initialValues }, action, {
-      operation: "updateProfile",
-      minimum: looseObject({}),
-      syncDefaults: true,
-      blocked: !user || updates.pending !== undefined,
-      disabledReason: updates.pending ? { code: "recovery" } : null,
-      write: (values, transaction) => updates.write("updateProfile", values, transaction),
-      complete: (completion, transaction) =>
-        updates.complete(completion as { outcome: "updated"; user: U }, transaction),
-    });
-    const updateTarget = { operation: "updateProfile" as const };
-    const updateImageTarget = { operation: "updateProfileImage" as const };
-    const updateFields: WorkflowAction<[Values], unknown> = {
-      ...action.control(updateTarget, updates.pending ? { code: "recovery" } : null),
-      run: (values) =>
-        action.run(updateTarget, async (transaction) =>
-          updates.complete(await updates.write("updateProfile", values, transaction), transaction),
-        ),
-    };
-    const updateImage: WorkflowAction<[string | null], unknown> = {
-      ...action.control(updateImageTarget, updates.pending ? { code: "recovery" } : null),
-      run: (image) =>
-        action.run(updateImageTarget, async (transaction) =>
-          updates.complete(
-            await updates.write("updateProfileImage", { image }, transaction),
-            transaction,
-          ),
-        ),
-    };
+    const workflowForm = useWorkflowForm(
+      { ...options, initialValues: profileInitialValues(user, options) },
+      action,
+      {
+        operation: "updateProfile",
+        minimum: looseObject({}),
+        syncDefaults: true,
+        blocked: !user || updates.pending !== undefined,
+        disabledReason: updates.pending ? { code: "recovery" } : null,
+        write: (values, transaction) => updates.write("updateProfile", values, transaction),
+        complete: (completion, transaction) =>
+          updates.complete(completion as { outcome: "updated"; user: U }, transaction),
+      },
+    );
     const form = preserveRecoveryReset(
       { ...workflowForm, feedback: updates.feedback },
       updates.pending !== undefined,
@@ -243,7 +267,17 @@ export function createAccountWorkflows<U extends { email: string }>(
       isPending: source.isPending,
       queryError: source.error,
       form: user ? form : null,
-      actions: { update: updateFields, updateImage },
+      actions: {
+        update: profileAction(action, updates, "updateProfile", (values: Values) => values),
+        updateImage: profileAction(
+          action,
+          updates,
+          "updateProfileImage",
+          (image: string | null) => ({
+            image,
+          }),
+        ),
+      },
     };
   }
 
@@ -419,26 +453,18 @@ export function createAccountWorkflows<U extends { email: string }>(
   const email = defineWorkflow(useEmailChangeForm);
   const password = defineWorkflow(usePasswordChangeForm);
   const reauthentication = defineWorkflow(useReauthenticationForm);
-  const define = (hook: (options: Options) => unknown, schema: ZodType<Values, Values>) =>
-    defineWorkflow((options: Options) => hook({ ...options, schema }));
   return {
-    useProfileSettings: profile.useWorkflow,
-    ProfileSettings: profile.Root,
-    useProfileSettingsContext: profile.useWorkflowContext,
-    defineProfileSettings: (schema: ZodType<Values, Values>) => define(useProfileSettings, schema),
-    useEmailChangeForm: email.useWorkflow,
-    EmailChangeForm: email.Root,
-    useEmailChangeFormContext: email.useWorkflowContext,
-    defineEmailChangeForm: (schema: ZodType<Values, Values>) => define(useEmailChangeForm, schema),
-    usePasswordChangeForm: password.useWorkflow,
-    PasswordChangeForm: password.Root,
-    usePasswordChangeFormContext: password.useWorkflowContext,
-    definePasswordChangeForm: (schema: ZodType<Values, Values>) =>
-      define(usePasswordChangeForm, schema),
-    useReauthenticationForm: reauthentication.useWorkflow,
-    ReauthenticationForm: reauthentication.Root,
-    useReauthenticationFormContext: reauthentication.useWorkflowContext,
-    defineReauthenticationForm: (schema: ZodType<Values, Values>) =>
-      define(useReauthenticationForm, schema),
+    ...exposeWorkflow("ProfileSettings", profile, (schema: ZodType<Values, Values>) =>
+      defineSchemaWorkflow(useProfileSettings, schema),
+    ),
+    ...exposeWorkflow("EmailChangeForm", email, (schema: ZodType<Values, Values>) =>
+      defineSchemaWorkflow(useEmailChangeForm, schema),
+    ),
+    ...exposeWorkflow("PasswordChangeForm", password, (schema: ZodType<Values, Values>) =>
+      defineSchemaWorkflow(usePasswordChangeForm, schema),
+    ),
+    ...exposeWorkflow("ReauthenticationForm", reauthentication, (schema: ZodType<Values, Values>) =>
+      defineSchemaWorkflow(useReauthenticationForm, schema),
+    ),
   };
 }

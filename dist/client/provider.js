@@ -1,6 +1,7 @@
 import { jsx as _jsx } from "react/jsx-runtime";
 import { useLayoutEffect, useMemo } from "react";
 import { useConvex, useConvexAuth } from "convex/react";
+import { observeAuth } from "../cache/query-cache.js";
 import { AuthDataContext, runtimeByClient } from "./provider-context.js";
 export function AuthDataProvider({ client, children, }) {
     const runtime = runtimeByClient.get(client);
@@ -14,7 +15,7 @@ export function AuthDataProvider({ client, children, }) {
     const ready = auth.isAuthenticated && !session.isPending && Boolean(session.data);
     const identity = useMemo(() => ({ userId, sessionId, ready }), [userId, sessionId, ready]);
     useLayoutEffect(() => runtime.attach(convex), [runtime, convex]);
-    useLayoutEffect(() => runtime.observeAuth({
+    useLayoutEffect(() => observeAuth(runtime, {
         ...identity,
         sessionToken: session.data?.session.token,
         sessionPending: session.isPending,

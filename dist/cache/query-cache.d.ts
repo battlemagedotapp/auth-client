@@ -28,9 +28,9 @@ export declare class CacheRuntime {
     attachmentRevision: number;
     authObservation: AuthObservation;
     authSession: unknown;
-    private authRevision;
-    private authListeners;
-    private sessionRefetch?;
+    authRevision: number;
+    authListeners: Set<() => void>;
+    sessionRefetch?: () => Promise<unknown>;
     timers: Set<number>;
     private deadlines;
     observeExpiry(key: QueryKey, expiry: number): () => void;
@@ -54,7 +54,6 @@ export declare class CacheRuntime {
     attach(convex: ConvexReactClient): () => void;
     subscribeAuth: (listener: () => void) => () => void;
     getAuthRevision: () => number;
-    observeAuth(observation: AuthObservation, refetch?: () => Promise<unknown>, session?: unknown): void;
     refreshSession(): Promise<void>;
     waitForAuth(predicate: (observation: AuthObservation) => boolean, signal: AbortSignal, timeout?: number, rejectWhen?: (observation: AuthObservation) => unknown): Promise<AuthObservation>;
     setIdentity(identity: Identity): void;
@@ -62,4 +61,5 @@ export declare class CacheRuntime {
     refresh(): Promise<void>;
     dispose(): void;
 }
+export declare function observeAuth(runtime: CacheRuntime, observation: AuthObservation, refetch?: () => Promise<unknown>, session?: unknown): void;
 //# sourceMappingURL=query-cache.d.ts.map

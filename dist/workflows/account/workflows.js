@@ -4,7 +4,7 @@ import { asRecord, getActionState, requireAvailable, useWorkflowAction, } from "
 import { useWorkflowForm } from "../shared/form.js";
 import { useIdentityAction } from "../shared/identity-action.js";
 import { resultIdentity, synchronizeAuthenticated, textValue } from "../shared/identity-sync.js";
-import { defineWorkflow } from "../shared/root.js";
+import { defineSchemaWorkflow, defineWorkflow, exposeWorkflow } from "../shared/root.js";
 const required = string().refine((value) => Boolean(value.trim()), "Required");
 const emailMinimum = looseObject({ newEmail: required });
 const passwordMinimum = looseObject({
@@ -107,6 +107,16 @@ function useProfileUpdates(auth, users, action, onUpdated) {
         : [];
     return { pending, feedback: action.feedback(recoveries), write, complete };
 }
+function profileAction(action, updates, target, values) {
+    const operation = { operation: target };
+    return {
+        ...action.control(operation, updates.pending ? { code: "recovery" } : null),
+        run: (...args) => action.run(operation, async (transaction) => updates.complete(await updates.write(target, values(...args), transaction), transaction)),
+    };
+}
+function profileInitialValues(user, options) {
+    return user ? options.getInitialValues(user) : {};
+}
 export function createAccountWorkflows(auth, runtime, currentUser) {
     const users = createUserObserver();
     const reauthenticationReceipts = new Map();
@@ -124,10 +134,7 @@ export function createAccountWorkflows(auth, runtime, currentUser) {
             source.identity === runtime.authObservation.userId;
         const action = useWorkflowAction(runtime, "profile-settings", enabled, options);
         const updates = useProfileUpdates(auth, users, action, options.onUpdated);
-        const initialValues = user
-            ? options.getInitialValues(user)
-            : {};
-        const workflowForm = useWorkflowForm({ ...options, initialValues }, action, {
+        const workflowForm = useWorkflowForm({ ...options, initialValues: profileInitialValues(user, options) }, action, {
             operation: "updateProfile",
             minimum: looseObject({}),
             syncDefaults: true,
@@ -136,16 +143,6 @@ export function createAccountWorkflows(auth, runtime, currentUser) {
             write: (values, transaction) => updates.write("updateProfile", values, transaction),
             complete: (completion, transaction) => updates.complete(completion, transaction),
         });
-        const updateTarget = { operation: "updateProfile" };
-        const updateImageTarget = { operation: "updateProfileImage" };
-        const updateFields = {
-            ...action.control(updateTarget, updates.pending ? { code: "recovery" } : null),
-            run: (values) => action.run(updateTarget, async (transaction) => updates.complete(await updates.write("updateProfile", values, transaction), transaction)),
-        };
-        const updateImage = {
-            ...action.control(updateImageTarget, updates.pending ? { code: "recovery" } : null),
-            run: (image) => action.run(updateImageTarget, async (transaction) => updates.complete(await updates.write("updateProfileImage", { image }, transaction), transaction)),
-        };
         const form = preserveRecoveryReset({ ...workflowForm, feedback: updates.feedback }, updates.pending !== undefined);
         const state = preserveRecoveryReset({ ...getActionState(action), feedback: updates.feedback }, updates.pending !== undefined);
         return {
@@ -154,7 +151,12 @@ export function createAccountWorkflows(auth, runtime, currentUser) {
             isPending: source.isPending,
             queryError: source.error,
             form: user ? form : null,
-            actions: { update: updateFields, updateImage },
+            actions: {
+                update: profileAction(action, updates, "updateProfile", (values) => values),
+                updateImage: profileAction(action, updates, "updateProfileImage", (image) => ({
+                    image,
+                })),
+            },
         };
     }
     function useEmailChangeForm(options) {
@@ -269,24 +271,11 @@ export function createAccountWorkflows(auth, runtime, currentUser) {
     const email = defineWorkflow(useEmailChangeForm);
     const password = defineWorkflow(usePasswordChangeForm);
     const reauthentication = defineWorkflow(useReauthenticationForm);
-    const define = (hook, schema) => defineWorkflow((options) => hook({ ...options, schema }));
     return {
-        useProfileSettings: profile.useWorkflow,
-        ProfileSettings: profile.Root,
-        useProfileSettingsContext: profile.useWorkflowContext,
-        defineProfileSettings: (schema) => define(useProfileSettings, schema),
-        useEmailChangeForm: email.useWorkflow,
-        EmailChangeForm: email.Root,
-        useEmailChangeFormContext: email.useWorkflowContext,
-        defineEmailChangeForm: (schema) => define(useEmailChangeForm, schema),
-        usePasswordChangeForm: password.useWorkflow,
-        PasswordChangeForm: password.Root,
-        usePasswordChangeFormContext: password.useWorkflowContext,
-        definePasswordChangeForm: (schema) => define(usePasswordChangeForm, schema),
-        useReauthenticationForm: reauthentication.useWorkflow,
-        ReauthenticationForm: reauthentication.Root,
-        useReauthenticationFormContext: reauthentication.useWorkflowContext,
-        defineReauthenticationForm: (schema) => define(useReauthenticationForm, schema),
+        ...exposeWorkflow("ProfileSettings", profile, (schema) => defineSchemaWorkflow(useProfileSettings, schema)),
+        ...exposeWorkflow("EmailChangeForm", email, (schema) => defineSchemaWorkflow(useEmailChangeForm, schema)),
+        ...exposeWorkflow("PasswordChangeForm", password, (schema) => defineSchemaWorkflow(usePasswordChangeForm, schema)),
+        ...exposeWorkflow("ReauthenticationForm", reauthentication, (schema) => defineSchemaWorkflow(useReauthenticationForm, schema)),
     };
 }
 //# sourceMappingURL=workflows.js.map

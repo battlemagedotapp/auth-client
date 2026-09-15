@@ -183,18 +183,6 @@ export class CacheRuntime {
         };
     };
     getAuthRevision = () => this.authRevision;
-    observeAuth(observation, refetch, session) {
-        this.sessionRefetch = refetch;
-        this.authSession = session;
-        const changed = JSON.stringify(this.authObservation) !== JSON.stringify(observation);
-        this.authObservation = observation;
-        this.setIdentity(observation);
-        if (changed) {
-            this.authRevision++;
-            for (const listener of this.authListeners)
-                listener();
-        }
-    }
     async refreshSession() {
         if (!this.sessionRefetch)
             throw new Error("The configured session hook cannot be refreshed");
@@ -357,5 +345,17 @@ export class CacheRuntime {
             listener();
         this.authListeners.clear();
     }
+}
+export function observeAuth(runtime, observation, refetch, session) {
+    runtime.sessionRefetch = refetch;
+    runtime.authSession = session;
+    const changed = JSON.stringify(runtime.authObservation) !== JSON.stringify(observation);
+    runtime.authObservation = observation;
+    runtime.setIdentity(observation);
+    if (!changed)
+        return;
+    runtime.authRevision++;
+    for (const listener of runtime.authListeners)
+        listener();
 }
 //# sourceMappingURL=query-cache.js.map

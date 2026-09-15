@@ -3,7 +3,7 @@ import { asRecord, getActionState, requireAvailable, } from "../shared/action.js
 import { useWorkflowForm } from "../shared/form.js";
 import { useIdentityAction } from "../shared/identity-action.js";
 import { identityOperationObsolete, resultIdentity, synchronizeAuthenticated, textValue, } from "../shared/identity-sync.js";
-import { defineWorkflow } from "../shared/root.js";
+import { defineSchemaWorkflow, defineWorkflow, exposeWorkflow } from "../shared/root.js";
 const required = string().refine((value) => Boolean(value.trim()), "Required");
 const signInMinimum = looseObject({ email: required, password: required });
 const signUpMinimum = looseObject({
@@ -38,9 +38,31 @@ function recoveryFeedback(action, target, recovery, hasReceipt) {
 function preserveRecoveryReset(state, pending) {
     return pending ? { ...state, reset() { } } : state;
 }
+function withRecoveryFeedback(state, action, target, recovery, hasReceipt) {
+    return preserveRecoveryReset({
+        ...state,
+        feedback: action.feedback(recoveryFeedback(action, target, recovery, hasReceipt)),
+    }, hasReceipt);
+}
+function recoveryAction(action, target, finish) {
+    return {
+        ...action.control(target),
+        run: () => action.run(target, finish, true),
+    };
+}
+function observedIdentity(runtime) {
+    return {
+        userId: runtime.authObservation.userId,
+        sessionId: runtime.authObservation.sessionId,
+    };
+}
 export function createAuthenticationWorkflows(auth, runtime) {
     const receipts = new Map();
     const call = (endpoint, values) => endpoint(values, { throw: true, retry: 0 });
+    function useReceiptAction(scope, availability, options) {
+        const action = useIdentityAction(runtime, scope, availability, options.enabled !== false, options, { onRetire: () => receipts.delete(scope) });
+        return { action, receipt: receipts.get(scope) };
+    }
     async function finishAuthentication(scope, kind, options, transaction) {
         const receipt = receipts.get(scope);
         requireAvailable(receipt?.kind === kind);
@@ -50,28 +72,26 @@ export function createAuthenticationWorkflows(auth, runtime) {
         await transaction.complete(() => options.onAuthenticated?.(completion));
         return completion;
     }
+    function useAuthenticationEntry(scope, kind, operation, options) {
+        const { action, receipt } = useReceiptAction(scope, "guest", options);
+        const finish = (transaction) => finishAuthentication(scope, kind, options, transaction);
+        const target = { operation };
+        const recovery = recoveryAction(action, target, finish);
+        return { action, finish, hasReceipt: receipt !== undefined, recovery, target };
+    }
     function useSignInForm(options) {
-        const scope = "sign-in";
-        const action = useIdentityAction(runtime, scope, "guest", options.enabled !== false, options, {
-            onRetire: () => receipts.delete(scope),
-        });
-        const receipt = receipts.get(scope);
-        const finish = (transaction) => finishAuthentication(scope, "signIn", options, transaction);
-        const target = { operation: "signIn" };
-        const recovery = {
-            ...action.control(target),
-            run: () => action.run(target, finish, true),
-        };
+        const entry = useAuthenticationEntry("sign-in", "signIn", "signIn", options);
+        const { action, finish, hasReceipt, recovery, target } = entry;
         const form = useWorkflowForm(options, action, {
             operation: "signIn",
             minimum: signInMinimum,
             secretFields,
-            blocked: receipt !== undefined,
-            disabledReason: receipt ? { code: "recovery" } : null,
+            blocked: hasReceipt,
+            disabledReason: hasReceipt ? { code: "recovery" } : null,
             write: async (values, transaction) => {
                 try {
                     const result = await transaction.write(() => call(auth.signIn.email, values));
-                    receipts.set(scope, { kind: "signIn", expected: resultIdentity(result) });
+                    receipts.set("sign-in", { kind: "signIn", expected: resultIdentity(result) });
                     return finish(transaction);
                 }
                 catch (cause) {
@@ -86,29 +106,17 @@ export function createAuthenticationWorkflows(auth, runtime) {
                 }
             },
         });
-        return preserveRecoveryReset({
-            ...form,
-            feedback: action.feedback(recoveryFeedback(action, target, recovery, receipt !== undefined)),
-        }, receipt !== undefined);
+        return withRecoveryFeedback(form, action, target, recovery, hasReceipt);
     }
     function useSignUpForm(options) {
-        const scope = "sign-up";
-        const action = useIdentityAction(runtime, scope, "guest", options.enabled !== false, options, {
-            onRetire: () => receipts.delete(scope),
-        });
-        const receipt = receipts.get(scope);
-        const finish = (transaction) => finishAuthentication(scope, "signUp", options, transaction);
-        const target = { operation: "signUp" };
-        const recovery = {
-            ...action.control(target),
-            run: () => action.run(target, finish, true),
-        };
+        const entry = useAuthenticationEntry("sign-up", "signUp", "signUp", options);
+        const { action, finish, hasReceipt, recovery, target } = entry;
         const form = useWorkflowForm(options, action, {
             operation: "signUp",
             minimum: signUpMinimum,
             secretFields,
-            blocked: receipt !== undefined,
-            disabledReason: receipt ? { code: "recovery" } : null,
+            blocked: hasReceipt,
+            disabledReason: hasReceipt ? { code: "recovery" } : null,
             write: async (values, transaction) => {
                 const callbackURL = textValue(options.callbackURL) || undefined;
                 const result = await transaction.write(() => call(auth.signUp.email, {
@@ -117,7 +125,7 @@ export function createAuthenticationWorkflows(auth, runtime) {
                 }));
                 const expected = resultIdentity(result);
                 if (expected.token) {
-                    receipts.set(scope, { kind: "signUp", expected });
+                    receipts.set("sign-up", { kind: "signUp", expected });
                     return finish(transaction);
                 }
                 const completion = {
@@ -128,20 +136,21 @@ export function createAuthenticationWorkflows(auth, runtime) {
                 return completion;
             },
         });
-        return preserveRecoveryReset({
-            ...form,
-            feedback: action.feedback(recoveryFeedback(action, target, recovery, receipt !== undefined)),
-        }, receipt !== undefined);
+        return withRecoveryFeedback(form, action, target, recovery, hasReceipt);
     }
     function usePasswordResetRequestForm(options) {
-        const action = useIdentityAction(runtime, "password-reset-request", "settled", options.enabled !== false, options);
+        return useEmailRequest("password-reset-request", "requestPasswordReset", auth.requestPasswordReset, "redirectTo", options);
+    }
+    function useEmailRequest(scope, operation, endpoint, callbackKey, options) {
+        const action = useIdentityAction(runtime, scope, "settled", options.enabled !== false, options);
         return useWorkflowForm(options, action, {
-            operation: "requestPasswordReset",
+            operation,
             minimum: emailMinimum,
             write: async (values, transaction) => {
-                await transaction.write(() => call(auth.requestPasswordReset, {
+                const callback = textValue(options[callbackKey]) || undefined;
+                await transaction.write(() => call(endpoint, {
                     ...values,
-                    redirectTo: options.redirectTo,
+                    ...(callback ? { [callbackKey]: callback } : {}),
                 }));
                 const completion = { outcome: "requested", email: textValue(values.email) };
                 await transaction.complete(() => options.onRequested?.(completion));
@@ -151,8 +160,7 @@ export function createAuthenticationWorkflows(auth, runtime) {
     }
     function usePasswordResetForm(options) {
         const scope = "password-reset";
-        const action = useIdentityAction(runtime, scope, "settled", options.enabled !== false, options, { onRetire: () => receipts.delete(scope) });
-        const receipt = receipts.get(scope);
+        const { action, receipt } = useReceiptAction(scope, "settled", options);
         const finish = async (transaction) => {
             const current = receipts.get(scope);
             requireAvailable(current?.kind === "passwordReset");
@@ -169,10 +177,7 @@ export function createAuthenticationWorkflows(auth, runtime) {
             return completion;
         };
         const target = { operation: "resetPassword" };
-        const recovery = {
-            ...action.control(target),
-            run: () => action.run(target, finish, true),
-        };
+        const recovery = recoveryAction(action, target, finish);
         const form = useWorkflowForm(options, action, {
             operation: "resetPassword",
             minimum: resetMinimum,
@@ -180,41 +185,20 @@ export function createAuthenticationWorkflows(auth, runtime) {
             blocked: receipt !== undefined,
             disabledReason: receipt ? { code: "recovery" } : null,
             write: async (values, transaction) => {
-                const original = {
-                    userId: runtime.authObservation.userId,
-                    sessionId: runtime.authObservation.sessionId,
-                };
+                const original = observedIdentity(runtime);
                 await transaction.write(() => call(auth.resetPassword, { ...values, token: options.token }));
                 receipts.set(scope, { kind: "passwordReset", stage: "signOut", original });
                 return finish(transaction);
             },
         });
-        return preserveRecoveryReset({
-            ...form,
-            feedback: action.feedback(recoveryFeedback(action, target, recovery, receipt !== undefined)),
-        }, receipt !== undefined);
+        return withRecoveryFeedback(form, action, target, recovery, receipt !== undefined);
     }
     function useEmailVerification(options) {
-        const action = useIdentityAction(runtime, "email-verification", "settled", options.enabled !== false, options);
-        return useWorkflowForm(options, action, {
-            operation: "sendVerificationEmail",
-            minimum: emailMinimum,
-            write: async (values, transaction) => {
-                const callbackURL = textValue(options.callbackURL) || undefined;
-                await transaction.write(() => call(auth.sendVerificationEmail, {
-                    ...values,
-                    ...(callbackURL ? { callbackURL } : {}),
-                }));
-                const completion = { outcome: "requested", email: textValue(values.email) };
-                await transaction.complete(() => options.onRequested?.(completion));
-                return completion;
-            },
-        });
+        return useEmailRequest("email-verification", "sendVerificationEmail", auth.sendVerificationEmail, "callbackURL", options);
     }
     function useSignOut(options = { initialValues: {} }) {
         const scope = "sign-out";
-        const action = useIdentityAction(runtime, scope, "authenticated", options.enabled !== false, options, { onRetire: () => receipts.delete(scope) });
-        const receipt = receipts.get(scope);
+        const { action, receipt } = useReceiptAction(scope, "authenticated", options);
         const finish = async (transaction) => {
             const current = receipts.get(scope);
             requireAvailable(current?.kind === "signOut");
@@ -225,21 +209,14 @@ export function createAuthenticationWorkflows(auth, runtime) {
             return completion;
         };
         const target = { operation: "signOut" };
-        const recovery = {
-            ...action.control(target),
-            run: () => action.run(target, finish, true),
-        };
+        const recovery = recoveryAction(action, target, finish);
         const state = {
             ...getActionState(action),
-            feedback: action.feedback(recoveryFeedback(action, target, recovery, receipt !== undefined)),
             actions: {
                 signOut: {
                     ...action.control(target, receipt ? { code: "recovery" } : null),
                     run: () => action.run(target, async (transaction) => {
-                        const original = {
-                            userId: runtime.authObservation.userId,
-                            sessionId: runtime.authObservation.sessionId,
-                        };
+                        const original = observedIdentity(runtime);
                         await transaction.write(() => call(auth.signOut, {}));
                         receipts.set(scope, { kind: "signOut", stage: "synchronization", original });
                         return finish(transaction);
@@ -247,7 +224,7 @@ export function createAuthenticationWorkflows(auth, runtime) {
                 },
             },
         };
-        return preserveRecoveryReset(state, receipt !== undefined);
+        return withRecoveryFeedback(state, action, target, recovery, receipt !== undefined);
     }
     const signIn = defineWorkflow(useSignInForm);
     const signUp = defineWorkflow(useSignUpForm);
@@ -255,31 +232,13 @@ export function createAuthenticationWorkflows(auth, runtime) {
     const reset = defineWorkflow(usePasswordResetForm);
     const verification = defineWorkflow(useEmailVerification);
     const signOut = defineWorkflow(useSignOut);
-    const define = (hook, schema) => defineWorkflow((options) => hook({ ...options, schema }));
     return {
-        useSignInForm: signIn.useWorkflow,
-        SignInForm: signIn.Root,
-        useSignInFormContext: signIn.useWorkflowContext,
-        defineSignInForm: (schema) => define(useSignInForm, schema),
-        useSignUpForm: signUp.useWorkflow,
-        SignUpForm: signUp.Root,
-        useSignUpFormContext: signUp.useWorkflowContext,
-        defineSignUpForm: (schema) => define(useSignUpForm, schema),
-        usePasswordResetRequestForm: requestReset.useWorkflow,
-        PasswordResetRequestForm: requestReset.Root,
-        usePasswordResetRequestFormContext: requestReset.useWorkflowContext,
-        definePasswordResetRequestForm: (schema) => define(usePasswordResetRequestForm, schema),
-        usePasswordResetForm: reset.useWorkflow,
-        PasswordResetForm: reset.Root,
-        usePasswordResetFormContext: reset.useWorkflowContext,
-        definePasswordResetForm: (schema) => define(usePasswordResetForm, schema),
-        useEmailVerification: verification.useWorkflow,
-        EmailVerification: verification.Root,
-        useEmailVerificationContext: verification.useWorkflowContext,
-        defineEmailVerification: (schema) => define(useEmailVerification, schema),
-        useSignOut: signOut.useWorkflow,
-        SignOut: signOut.Root,
-        useSignOutContext: signOut.useWorkflowContext,
+        ...exposeWorkflow("SignInForm", signIn, (schema) => defineSchemaWorkflow(useSignInForm, schema)),
+        ...exposeWorkflow("SignUpForm", signUp, (schema) => defineSchemaWorkflow(useSignUpForm, schema)),
+        ...exposeWorkflow("PasswordResetRequestForm", requestReset, (schema) => defineSchemaWorkflow(usePasswordResetRequestForm, schema)),
+        ...exposeWorkflow("PasswordResetForm", reset, (schema) => defineSchemaWorkflow(usePasswordResetForm, schema)),
+        ...exposeWorkflow("EmailVerification", verification, (schema) => defineSchemaWorkflow(useEmailVerification, schema)),
+        ...exposeWorkflow("SignOut", signOut),
     };
 }
 //# sourceMappingURL=workflows.js.map
