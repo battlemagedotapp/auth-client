@@ -1,7 +1,7 @@
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useClientBoundary } from "../../client/provider-context.js";
 import { workflowLocks } from "./locks.js";
-import { actionControl, ignored, operationFeedback, useCommittedRef, } from "./action.js";
+import { actionControl, classifyWorkflowFailure, ignored, operationFeedback, useCommittedRef, } from "./action.js";
 import { identityOperationObsolete } from "./identity-sync.js";
 function retireCallback(callbacks, scope, owner) {
     const retirement = callbacks.get(scope);
@@ -222,13 +222,16 @@ function identityFailure(cause, valid, state, store, scope, owner, lease, onErro
         store.clearReceipt(scope, owner);
         return ignored("obsolete");
     }
+    const failure = classifyWorkflowFailure(cause);
     const error = {
         phase: state.phase,
-        cause,
+        cause: failure.cause,
         writeSucceeded: state.writeSucceeded,
     };
-    store.fail(lease, state.target, error);
-    onError?.({ target: state.target, error: cause, diagnostics: error });
+    if (!failure.isHandled) {
+        store.fail(lease, state.target, error);
+        onError?.({ target: state.target, error: failure.cause, diagnostics: error });
+    }
     return { status: "error", error };
 }
 async function executeIdentityAction(context, initialTarget, work, alreadyWritten) {

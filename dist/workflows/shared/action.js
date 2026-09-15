@@ -7,6 +7,18 @@ export const asRecords = (value) => Array.isArray(value) ? value.map(asRecord).f
 export const ignored = (reason) => ({ status: "ignored", reason });
 const conflict = Symbol("workflow conflict");
 const unavailable = Symbol("workflow unavailable");
+const handledFailure = Symbol("handled workflow failure");
+/** Marks a failure already represented by workflow-owned state, such as form validation. */
+export const handledWorkflowFailure = (cause) => ({
+    [handledFailure]: true,
+    cause,
+});
+export function classifyWorkflowFailure(cause) {
+    const handled = typeof cause === "object" && cause !== null && handledFailure in cause
+        ? cause
+        : null;
+    return { cause: handled?.cause ?? cause, isHandled: handled !== null };
+}
 export function requireAvailable(condition) {
     if (!condition)
         throw unavailable;
@@ -190,10 +202,15 @@ export function useWorkflowAction(runtime, scope, enabled = true, options = {}) 
                 return ignored("busy");
             if (cause === unavailable)
                 return ignored("unavailable");
-            const error = { phase, cause, writeSucceeded };
-            if (valid()) {
+            const failure = classifyWorkflowFailure(cause);
+            const error = { phase, cause: failure.cause, writeSucceeded };
+            if (valid() && !failure.isHandled) {
                 setFeedback({ owner, pending: null, error, target: pending });
-                callbacks.current.onError?.({ target: pending, error: cause, diagnostics: error });
+                callbacks.current.onError?.({
+                    target: pending,
+                    error: failure.cause,
+                    diagnostics: error,
+                });
             }
             return { status: "error", error };
         }

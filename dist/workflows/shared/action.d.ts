@@ -4,6 +4,17 @@ export type Values = Record<string, unknown>;
 export declare const asRecord: (value: unknown) => Values | undefined;
 export declare const asRecords: (value: unknown) => Values[];
 export declare const ignored: (reason: "disabled" | "busy" | "obsolete" | "unavailable") => WorkflowOutcome<never>;
+declare const handledFailure: unique symbol;
+type HandledFailure = {
+    [handledFailure]: true;
+    cause: unknown;
+};
+/** Marks a failure already represented by workflow-owned state, such as form validation. */
+export declare const handledWorkflowFailure: (cause: unknown) => HandledFailure;
+export declare function classifyWorkflowFailure(cause: unknown): {
+    cause: unknown;
+    isHandled: boolean;
+};
 export declare function requireAvailable(condition: unknown): asserts condition;
 export declare function enforcePolicy(decision: PolicyDecision): void;
 export declare const allowed: PolicyDecision;

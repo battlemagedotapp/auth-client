@@ -2,7 +2,7 @@ import { useEffectEvent, useLayoutEffect, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { NEVER, record, string, unknown } from "zod";
-import { useCommittedRef } from "./action.js";
+import { handledWorkflowFailure, useCommittedRef, } from "./action.js";
 import { hashKey } from "@tanstack/react-query";
 // RHF treats dots/brackets as paths. Encode literal Better Auth field names.
 const encode = (name) => "f" +
@@ -242,7 +242,10 @@ export function useWorkflowForm(options, action, execution) {
                     invalid = failures;
                 })();
                 if (invalid)
-                    throw { fields: publicFields(invalid), form: formIssue(invalid._form) };
+                    throw handledWorkflowFailure({
+                        fields: publicFields(invalid),
+                        form: formIssue(invalid._form),
+                    });
                 if (!transaction.current())
                     throw new Error("Obsolete form submission");
                 if (execution.resetToDraft) {
