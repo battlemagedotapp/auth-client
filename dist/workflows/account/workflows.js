@@ -111,7 +111,9 @@ function profileAction(action, updates, target, values) {
     const operation = { operation: target };
     return {
         ...action.control(operation, updates.pending ? { code: "recovery" } : null),
-        run: (...args) => action.run(operation, async (transaction) => updates.complete(await updates.write(target, values(...args), transaction), transaction)),
+        run: (...args) => updates.pending
+            ? Promise.resolve({ status: "ignored", reason: "disabled" })
+            : action.run(operation, async (transaction) => updates.complete(await updates.write(target, values(...args), transaction), transaction)),
     };
 }
 function profileInitialValues(user, options) {
@@ -148,7 +150,7 @@ export function createAccountWorkflows(auth, runtime, currentUser) {
         return {
             ...state,
             user,
-            isPending: source.isPending,
+            isPending: source.isPending || action.isBusy,
             queryError: source.error,
             form: user ? form : null,
             actions: {

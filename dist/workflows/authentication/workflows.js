@@ -215,12 +215,14 @@ export function createAuthenticationWorkflows(auth, runtime) {
             actions: {
                 signOut: {
                     ...action.control(target, receipt ? { code: "recovery" } : null),
-                    run: () => action.run(target, async (transaction) => {
-                        const original = observedIdentity(runtime);
-                        await transaction.write(() => call(auth.signOut, {}));
-                        receipts.set(scope, { kind: "signOut", stage: "synchronization", original });
-                        return finish(transaction);
-                    }),
+                    run: () => receipt
+                        ? Promise.resolve({ status: "ignored", reason: "disabled" })
+                        : action.run(target, async (transaction) => {
+                            const original = observedIdentity(runtime);
+                            await transaction.write(() => call(auth.signOut, {}));
+                            receipts.set(scope, { kind: "signOut", stage: "synchronization", original });
+                            return finish(transaction);
+                        }),
                 },
             },
         };

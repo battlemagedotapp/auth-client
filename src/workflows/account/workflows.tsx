@@ -190,9 +190,14 @@ function profileAction<TArgs extends unknown[], U>(
   return {
     ...action.control(operation, updates.pending ? { code: "recovery" } : null),
     run: (...args) =>
-      action.run(operation, async (transaction) =>
-        updates.complete(await updates.write(target, values(...args), transaction), transaction),
-      ),
+      updates.pending
+        ? Promise.resolve({ status: "ignored" as const, reason: "disabled" as const })
+        : action.run(operation, async (transaction) =>
+            updates.complete(
+              await updates.write(target, values(...args), transaction),
+              transaction,
+            ),
+          ),
   };
 }
 
@@ -264,7 +269,7 @@ export function createAccountWorkflows<U extends { email: string }>(
     return {
       ...state,
       user,
-      isPending: source.isPending,
+      isPending: source.isPending || action.isBusy,
       queryError: source.error,
       form: user ? form : null,
       actions: {

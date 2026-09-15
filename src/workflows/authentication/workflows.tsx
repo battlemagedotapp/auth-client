@@ -354,12 +354,14 @@ export function createAuthenticationWorkflows(auth: AuthenticationClient, runtim
         signOut: {
           ...action.control(target, receipt ? { code: "recovery" } : null),
           run: () =>
-            action.run(target, async (transaction) => {
-              const original = observedIdentity(runtime);
-              await transaction.write(() => call(auth.signOut as Write, {}));
-              receipts.set(scope, { kind: "signOut", stage: "synchronization", original });
-              return finish(transaction);
-            }),
+            receipt
+              ? Promise.resolve({ status: "ignored" as const, reason: "disabled" as const })
+              : action.run(target, async (transaction) => {
+                  const original = observedIdentity(runtime);
+                  await transaction.write(() => call(auth.signOut as Write, {}));
+                  receipts.set(scope, { kind: "signOut", stage: "synchronization", original });
+                  return finish(transaction);
+                }),
         },
       },
     };
