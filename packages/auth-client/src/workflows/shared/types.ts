@@ -61,6 +61,8 @@ export type WorkflowPendingAction = {
 };
 export type WorkflowActionState = {
   feedback: readonly WorkflowFeedback[];
+  /** True while any action owned by this workflow is running. */
+  isPending: boolean;
   diagnostics: {
     pendingAction: WorkflowPendingAction | null;
     error: WorkflowError | null;

@@ -1,5 +1,14 @@
 # Verification
 
+## v0.4.1-rc.1 — 2026-09-15
+
+Workflow state now exposes aggregate `isPending` for presentation-level containment such as modal
+dismissal. It is derived from the same action controller as individual action handles, keeping
+ordinary consumers out of diagnostic pending-action metadata. The existing duplicate-submission
+test now proves both aggregate and action-specific pending state. `pnpm check` and all 89 controlled
+tests, package installation, Git installation, and all eight isolated browser journeys pass. Gaia
+consumer qualification is recorded before the stable tag is published.
+
 ## v0.4.0 — 2026-09-15
 
 Authentication and account workflows now share the same headless root/hook contract as the

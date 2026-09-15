@@ -249,6 +249,7 @@ it("keeps identity action readiness aligned with duplicate-submit prevention", a
     first = hook.result.current.actions.submit.run();
   });
   await waitFor(() => {
+    expect(hook.result.current.isPending).toBe(true);
     expect(hook.result.current.actions.submit.isPending).toBe(true);
     expect(hook.result.current.actions.submit.isDisabled).toBe(true);
   });
@@ -260,6 +261,7 @@ it("keeps identity action readiness aligned with duplicate-submit prevention", a
   await act(async () => {
     await first;
   });
+  expect(hook.result.current.isPending).toBe(false);
   expect(fixture.auth.signIn.email).toHaveBeenCalledOnce();
 });
 
