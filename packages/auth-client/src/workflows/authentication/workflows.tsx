@@ -123,7 +123,7 @@ export function createAuthenticationWorkflows(auth: AuthenticationClient, runtim
   const call = (endpoint: Write, values: Values) => endpoint(values, { throw: true, retry: 0 });
   function useReceiptAction(
     scope: string,
-    availability: "guest" | "authenticated" | "settled",
+    availability: "guest" | "authenticated" | "session" | "settled",
     options: Options,
   ) {
     const action = useIdentityAction(
@@ -332,7 +332,7 @@ export function createAuthenticationWorkflows(auth: AuthenticationClient, runtim
 
   function useSignOut(options: Options = { initialValues: {} }) {
     const scope = "sign-out";
-    const { action, receipt } = useReceiptAction(scope, "authenticated", options);
+    const { action, receipt } = useReceiptAction(scope, "session", options);
     const finish = async (transaction: ActionExecution) => {
       const current = receipts.get(scope);
       requireAvailable(current?.kind === "signOut");

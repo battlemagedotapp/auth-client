@@ -468,6 +468,29 @@ it("keeps sign-out synchronization recovery actionable after session absence", a
   expect(completed).toHaveBeenCalledOnce();
 });
 
+it("keeps sign-out available while Convex authentication is temporarily unavailable", async () => {
+  const current = {
+    user: { id: "user", email: "user@example.com" },
+    session: { id: "session", token: "private-token" },
+  };
+  const fixture = authenticationFixture(current);
+  convexAuthenticated = false;
+  fixture.auth.signOut.mockImplementation(async () => {
+    fixture.sessions.transition(null);
+    return { status: true };
+  });
+  const hook = renderHook(() => fixture.client.useSignOut(), { wrapper: fixture.wrapper });
+
+  await waitFor(() => expect(hook.result.current.actions.signOut.isDisabled).toBe(false));
+  await act(async () => {
+    expect(await hook.result.current.actions.signOut.run()).toEqual({
+      status: "success",
+      data: { outcome: "signedOut" },
+    });
+  });
+  expect(fixture.auth.signOut).toHaveBeenCalledOnce();
+});
+
 it("recovers displaced-session cleanup without repeating reauthentication", async () => {
   const current = {
     user: { id: "user", email: "user@example.com" },

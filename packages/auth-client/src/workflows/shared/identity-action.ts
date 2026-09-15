@@ -157,7 +157,7 @@ function identityOperations(runtime: CacheRuntime) {
   return store;
 }
 
-type Availability = "guest" | "authenticated" | "settled";
+type Availability = "guest" | "authenticated" | "session" | "settled";
 
 type IdentityStore = ReturnType<typeof createIdentityOperations>;
 type LockStore = ReturnType<typeof workflowLocks>;
@@ -203,6 +203,7 @@ function isAvailable(
   if (observation.sessionPending) return false;
   if (availability === "settled") return true;
   if (availability === "guest") return !observation.userId;
+  if (availability === "session") return Boolean(observation.userId && observation.sessionId);
   return observation.ready;
 }
 
