@@ -248,6 +248,7 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
           },
         };
       },
+      isPending: action.isBusy,
       diagnostics: { pendingAction: action.pendingAction, error: action.error },
       reset: action.reset,
     };
@@ -362,6 +363,7 @@ export function createInvitationWorkflows(client: InvitationReads, runtime: Cach
           },
         };
       },
+      isPending: action.isBusy,
       diagnostics: { pendingAction: action.pendingAction, error: action.error },
       reset: action.reset,
     };

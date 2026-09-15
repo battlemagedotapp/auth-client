@@ -65,6 +65,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
             };
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -104,6 +105,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
             };
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -152,6 +154,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -159,7 +162,6 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -185,13 +187,13 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
             };
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
         };
         reset: () => void;
         queryError: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -211,6 +213,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -218,7 +221,6 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -256,6 +258,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
             };
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -315,6 +318,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -322,7 +326,6 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -359,13 +362,13 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
             };
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
         };
         reset: () => void;
         queryError: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -397,6 +400,7 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -404,7 +408,6 @@ export declare function createInvitationWorkflows(client: InvitationReads, runti
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };

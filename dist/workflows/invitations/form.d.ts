@@ -15,6 +15,7 @@ export declare function useInvitationFormState(options: FormOptions, action: Ret
         };
     };
     feedback: import("../shared/types.js").WorkflowFeedback[];
+    isPending: boolean;
     values: {
         [x: string]: unknown;
     };

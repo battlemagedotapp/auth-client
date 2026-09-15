@@ -273,6 +273,7 @@ export function useWorkflowForm(options, action, execution) {
             },
         },
         feedback: action.feedback(),
+        isPending: action.isBusy,
         values,
         hasServerChanges,
         touched: Object.fromEntries(Object.entries(matches ? touchedFields : {})

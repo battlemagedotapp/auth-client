@@ -326,6 +326,7 @@ export function useWorkflowForm(
       },
     },
     feedback: action.feedback(),
+    isPending: action.isBusy,
     values,
     hasServerChanges,
     touched: Object.fromEntries(

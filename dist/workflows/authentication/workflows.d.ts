@@ -16,6 +16,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -75,6 +76,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -115,6 +117,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -155,6 +158,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -193,6 +197,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -231,6 +236,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -271,6 +277,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -330,6 +337,7 @@ export declare function createAuthenticationWorkflows(auth: AuthenticationClient
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: import("../shared/types.js").WorkflowError | null;

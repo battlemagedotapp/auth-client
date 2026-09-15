@@ -87,6 +87,7 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
             disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -94,7 +95,6 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -178,6 +178,7 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
                 };
             };
             feedback: import("../shared/types.js").WorkflowFeedback[];
+            isPending: boolean;
             values: {
                 [x: string]: unknown;
             };
@@ -353,6 +354,7 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
                 };
             };
             feedback: import("../shared/types.js").WorkflowFeedback[];
+            isPending: boolean;
             values: {
                 [x: string]: unknown;
             };
@@ -411,6 +413,7 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
             disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
         };
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: WorkflowError | null;
@@ -418,7 +421,6 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -525,6 +527,7 @@ export declare function createOrganizationWorkflows(client: OrganizationReads, r
                 };
             };
             feedback: import("../shared/types.js").WorkflowFeedback[];
+            isPending: boolean;
             values: {
                 [x: string]: unknown;
             };

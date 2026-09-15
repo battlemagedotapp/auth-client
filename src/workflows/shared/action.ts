@@ -43,6 +43,7 @@ export function useCommittedRef<T>(value: T) {
 export function getActionState(action: WorkflowActionController) {
   return {
     feedback: action.feedback(),
+    isPending: action.isBusy,
     diagnostics: { pendingAction: action.pendingAction, error: action.error },
     reset: () => action.reset(),
   };

@@ -33,6 +33,7 @@ export declare function useWorkflowForm(options: FormOptions, action: WorkflowAc
         };
     };
     feedback: import("./types.js").WorkflowFeedback[];
+    isPending: boolean;
     values: Values;
     hasServerChanges: boolean;
     touched: {

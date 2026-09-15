@@ -28,6 +28,7 @@ export function useCommittedRef(value) {
 export function getActionState(action) {
     return {
         feedback: action.feedback(),
+        isPending: action.isBusy,
         diagnostics: { pendingAction: action.pendingAction, error: action.error },
         reset: () => action.reset(),
     };

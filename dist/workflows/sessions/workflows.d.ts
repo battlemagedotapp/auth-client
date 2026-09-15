@@ -51,6 +51,7 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         currentSessionId: string | undefined;
         needsFreshSession: boolean;
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: import("../shared/types.js").WorkflowError | null;
@@ -58,7 +59,6 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };
@@ -102,6 +102,7 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         currentSessionId: string | undefined;
         needsFreshSession: boolean;
         feedback: import("../shared/types.js").WorkflowFeedback[];
+        isPending: boolean;
         diagnostics: {
             pendingAction: import("../shared/types.js").WorkflowPendingAction | null;
             error: import("../shared/types.js").WorkflowError | null;
@@ -109,7 +110,6 @@ export declare function createSessionWorkflows(client: SessionReads, runtime: Ca
         reset: () => void;
         queryError: unknown;
         data: unknown;
-        isPending: boolean;
         isFetching: boolean;
         refetch(): Promise<import("../../client/types.js").RefetchResult<unknown> | undefined>;
     };

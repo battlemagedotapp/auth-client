@@ -23,6 +23,7 @@ export declare function createAccountWorkflows<U extends {
                     disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
                 };
             };
+            isPending: boolean;
             values: {
                 [x: string]: unknown;
             };
@@ -95,6 +96,7 @@ export declare function createAccountWorkflows<U extends {
                     disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
                 };
             };
+            isPending: boolean;
             values: {
                 [x: string]: unknown;
             };
@@ -144,6 +146,7 @@ export declare function createAccountWorkflows<U extends {
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -182,6 +185,7 @@ export declare function createAccountWorkflows<U extends {
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -220,6 +224,7 @@ export declare function createAccountWorkflows<U extends {
             };
         };
         feedback: WorkflowFeedback[];
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -258,6 +263,7 @@ export declare function createAccountWorkflows<U extends {
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };
@@ -315,6 +321,7 @@ export declare function createAccountWorkflows<U extends {
                 disabledReason: import("../shared/types.js").WorkflowDisabledReason | null;
             };
         };
+        isPending: boolean;
         values: {
             [x: string]: unknown;
         };

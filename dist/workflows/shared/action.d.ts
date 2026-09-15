@@ -12,6 +12,7 @@ export declare const policyReason: (decision: PolicyDecision) => WorkflowDisable
 export declare function useCommittedRef<T>(value: T): import("react").RefObject<T>;
 export declare function getActionState(action: WorkflowActionController): {
     feedback: WorkflowFeedback[];
+    isPending: boolean;
     diagnostics: {
         pendingAction: WorkflowPendingAction | null;
         error: WorkflowError | null;

@@ -163,6 +163,7 @@ export function createInvitationWorkflows(client, runtime) {
                     },
                 };
             },
+            isPending: action.isBusy,
             diagnostics: { pendingAction: action.pendingAction, error: action.error },
             reset: action.reset,
         };
@@ -242,6 +243,7 @@ export function createInvitationWorkflows(client, runtime) {
                     },
                 };
             },
+            isPending: action.isBusy,
             diagnostics: { pendingAction: action.pendingAction, error: action.error },
             reset: action.reset,
         };
