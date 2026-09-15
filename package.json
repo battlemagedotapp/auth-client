@@ -1,6 +1,6 @@
 {
   "name": "@strawdev/auth-client",
-  "version": "0.3.1-rc.1",
+  "version": "0.3.1",
   "description": "Typed React caching and authorized Convex invalidation for an application-owned Better Auth client",
   "homepage": "https://github.com/strawdotdev/auth-client#readme",
   "bugs": "https://github.com/strawdotdev/auth-client/issues",
