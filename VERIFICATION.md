@@ -1,6 +1,6 @@
 # Verification
 
-## v0.4.0 candidate — 2026-09-15
+## v0.4.0 — 2026-09-15
 
 Authentication and account workflows now share the same headless root/hook contract as the
 organization and session workflows. Better Auth still owns credentials and reactive session state;
@@ -11,9 +11,12 @@ identity-checked reactive current-user projection for profile synchronization.
 - `pnpm test:package` and `pnpm test:git`: compiled imports, declarations, backend separation, and
   compilation-free `v0.4.0-rc.4` candidate installation passed.
 - `pnpm test:e2e`: all eight isolated local browser journeys passed in 1 minute 18 seconds.
-- Live email qualification covers delivered registration verification, password reset, two-step
-  email change, and the existing invitation verification/acceptance flow. Its result is recorded
-  after the development-provider run rather than inferred from controlled delivery.
+- Live email qualification passed against `uncommon-gopher-566`: delivered registration
+  verification, password reset, and two-step email change completed in 37.8 seconds; the existing
+  invitation verification/acceptance journey completed in 48.6 seconds.
+- Gaia's installed-candidate root and affected deterministic checks passed. Its two-client
+  organization synchronization/deletion journey, including unavailable-state recovery and
+  application sign-out, passed in 1 minute 48 seconds.
 
 Secret fields are cleared after submitted attempts. Successful writes retain only bounded internal
 receipts for read or named cleanup recovery; retries do not resubmit credentials, consumed reset
@@ -27,6 +30,9 @@ dead code, complexity, duplication, or boundary findings across the complete v0.
 RC.4 keeps sign-out available from an observed Better Auth session while Convex authentication is
 temporarily unavailable. Sign-out still confirms session absence and retains the same recovery and
 conflict guarantees.
+
+Stable `v0.4.0` contains the qualified RC.4 implementation unchanged except for version and release
+documentation.
 
 ## v0.3.1 — 2026-09-15
 
